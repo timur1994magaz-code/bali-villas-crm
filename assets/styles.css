@@ -310,3 +310,9 @@ hr.sep{border:none;border-top:1px solid var(--line-soft);margin:14px 0}
   .content{padding:14px}
   .topbar{padding:12px 14px}
 }
+
+/* ===== Прогресс и бейджи фото ===== */
+.bar-track{height:8px;border-radius:6px;background:var(--bg);border:1px solid var(--line-soft);overflow:hidden}
+.bar-fill{height:100%;background:var(--acc);transition:width .2s}
+.photo-badge{position:absolute;left:6px;top:6px;background:rgba(6,12,14,.78);color:#fff;border-radius:6px;padding:2px 7px;font-size:10px;letter-spacing:.3px}
+code{background:var(--bg);border:1px solid var(--line-soft);border-radius:5px;padding:1px 5px;font-size:12px}

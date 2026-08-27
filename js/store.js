@@ -160,51 +160,8 @@ export async function setSetting(key, value) {
   emit();
 }
 
-// ===== Экспорт / импорт (полный бэкап, включая файлы) =====
-function blobToDataUrl(blob) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result);
-    r.onerror = rej;
-    r.readAsDataURL(blob);
-  });
-}
-function dataUrlToBlob(url) {
-  const [head, b64] = url.split(',');
-  const mime = (head.match(/:(.*?);/) || [])[1] || 'application/octet-stream';
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new Blob([arr], { type: mime });
-}
-export async function exportAll(withFiles = true) {
-  const files = await db.all('files');
-  const packed = [];
-  if (withFiles) {
-    for (const f of files) {
-      packed.push({ ...f, blob: undefined, data: await blobToDataUrl(f.blob) });
-    }
-  }
-  return {
-    app: 'bali-villas-crm', version: 1, exportedAt: new Date().toISOString(),
-    villas: state.villas, bookings: state.bookings, clients: state.clients,
-    settings: Object.entries(state.settings).map(([key, value]) => ({ key, value })),
-    files: packed,
-  };
-}
-export async function importAll(data, { replace = false } = {}) {
-  if (!data || data.app !== 'bali-villas-crm') throw new Error('Неподходящий файл бэкапа');
-  if (replace) for (const s of db.STORES) await db.clear(s);
-  for (const v of data.villas || []) await db.put('villas', v);
-  for (const b of data.bookings || []) await db.put('bookings', b);
-  for (const c of data.clients || []) await db.put('clients', c);
-  for (const s of data.settings || []) await db.put('settings', s);
-  for (const f of data.files || []) {
-    if (!f.data) continue;
-    await db.put('files', { ...f, data: undefined, blob: dataUrlToBlob(f.data) });
-  }
-  await load();
-}
+// ===== Экспорт / импорт живёт в backup.js (папка / ZIP / JSON) =====
+
 export async function wipeAll() {
   for (const s of db.STORES) await db.clear(s);
   await load();

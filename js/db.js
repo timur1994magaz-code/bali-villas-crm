@@ -1,6 +1,6 @@
 // ===== IndexedDB: виллы, брони, клиенты, файлы =====
 const DB_NAME = 'bali-villas-crm';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 export const STORES = ['villas', 'bookings', 'clients', 'files', 'settings'];
 
 let _db = null;
@@ -23,9 +23,16 @@ export function open() {
       if (!db.objectStoreNames.contains('clients')) {
         db.createObjectStore('clients', { keyPath: 'id' });
       }
+      let filesStore;
       if (!db.objectStoreNames.contains('files')) {
-        const s = db.createObjectStore('files', { keyPath: 'id' });
-        s.createIndex('owner', ['ownerType', 'ownerId']);
+        filesStore = db.createObjectStore('files', { keyPath: 'id' });
+        filesStore.createIndex('owner', ['ownerType', 'ownerId']);
+      } else {
+        filesStore = req.transaction.objectStore('files');
+      }
+      // индекс для быстрой обложки и порядка фото без чтения всех блобов
+      if (!filesStore.indexNames.contains('ownerKindSort')) {
+        filesStore.createIndex('ownerKindSort', ['ownerType', 'ownerId', 'kind', 'sort']);
       }
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'key' });
@@ -79,7 +86,7 @@ export function uid() {
 }
 
 // ==== Файлы (фото / документы) ====
-export async function saveFile(ownerType, ownerId, file, kind, caption = '') {
+export async function saveFile(ownerType, ownerId, file, kind, caption = '', extra = {}) {
   const rec = {
     id: uid(),
     ownerType, ownerId, kind,
@@ -87,9 +94,13 @@ export async function saveFile(ownerType, ownerId, file, kind, caption = '') {
     mime: file.type || 'application/octet-stream',
     size: file.size || 0,
     caption,
-    blob: file,                 // Blob хранится как есть — без сжатия, полное качество
+    blob: file,                 // оригинал хранится как есть
+    thumb: extra.thumb || null,  // превью ~50 КБ для сеток и обложек
+    w: extra.w || null,
+    h: extra.h || null,
+    optimized: !!extra.optimized,
     createdAt: new Date().toISOString(),
-    sort: Date.now(),
+    sort: extra.sort !== undefined ? extra.sort : Date.now(),
   };
   await put('files', rec);
   return rec;
@@ -102,6 +113,57 @@ export async function filesOf(ownerType, ownerId, kind = null) {
 export async function deleteFilesOf(ownerType, ownerId) {
   const list = await byIndex('files', 'owner', [ownerType, ownerId]);
   for (const f of list) await del('files', f.id);
+}
+
+/** Первое фото владельца — через курсор, без чтения остальных записей. */
+export async function firstPhoto(ownerType, ownerId) {
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const idx = db.transaction('files', 'readonly').objectStore('files').index('ownerKindSort');
+    const range = IDBKeyRange.bound(
+      [ownerType, ownerId, 'photo', -Infinity],
+      [ownerType, ownerId, 'photo', Infinity]);
+    const req = idx.openCursor(range, 'next');
+    req.onsuccess = () => resolve(req.result ? req.result.value : null);
+    req.onerror = () => reject(req.error);
+  });
+}
+/** Количество файлов — считается по индексу, блобы не читаются. */
+export async function countFiles(ownerType, ownerId, kind = 'photo') {
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const idx = db.transaction('files', 'readonly').objectStore('files').index('ownerKindSort');
+    const req = idx.count(IDBKeyRange.bound(
+      [ownerType, ownerId, kind, -Infinity],
+      [ownerType, ownerId, kind, Infinity]));
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+/** Проход по всем файлам курсором — по одной записи, без загрузки всего списка. */
+export async function eachFile(cb) {
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('files', 'readonly').objectStore('files').openCursor();
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) return resolve();
+      cb(cur.value);          // синхронно: иначе транзакция закроется до continue()
+      cur.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+/** Сводка по файлам без удержания всех записей в памяти. */
+export async function fileStats() {
+  const st = { photos: 0, docs: 0, size: 0, thumbSize: 0, noThumb: 0 };
+  await eachFile((f) => {
+    if (f.kind === 'photo') st.photos++; else st.docs++;
+    st.size += f.size || 0;
+    if (f.thumb) st.thumbSize += f.thumb.size || 0;
+    else if (f.kind === 'photo') st.noThumb++;
+  });
+  return st;
 }
 
 // ==== Оценка занятого места ====
