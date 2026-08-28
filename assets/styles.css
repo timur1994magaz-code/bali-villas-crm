@@ -316,3 +316,13 @@ hr.sep{border:none;border-top:1px solid var(--line-soft);margin:14px 0}
 .bar-fill{height:100%;background:var(--acc);transition:width .2s}
 .photo-badge{position:absolute;left:6px;top:6px;background:rgba(6,12,14,.78);color:#fff;border-radius:6px;padding:2px 7px;font-size:10px;letter-spacing:.3px}
 code{background:var(--bg);border:1px solid var(--line-soft);border-radius:5px;padding:1px 5px;font-size:12px}
+
+/* ===== Экран входа ===== */
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)}
+.login-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)}
+.login-logo{font-size:38px;text-align:center}
+.login-card h2{margin:0;text-align:center;font-size:20px}
+.login-card > .hint{text-align:center;margin-bottom:6px}
+.login-card .btn-primary{margin-top:6px}
+.login-error{background:rgba(226,104,95,.12);border:1px solid rgba(226,104,95,.35);color:var(--danger);border-radius:9px;padding:9px 12px;font-size:12.5px}
+.cloud-badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 9px;border-radius:20px;background:var(--acc-soft);color:var(--acc);border:1px solid rgba(47,191,155,.35)}

@@ -1,5 +1,5 @@
 // ===== Бэкап и восстановление: папка на диске, ZIP-части, JSON только с данными =====
-import * as db from './db.js';
+import * as data from './data.js';
 import * as S from './store.js';
 import { createZip, readZip } from './zip.js';
 import { download, bytes } from './util.js';
@@ -20,35 +20,37 @@ export function canUseDirectory() {
 
 /** Собирает манифест: метаданные всех записей + список файлов для выгрузки. */
 export async function buildManifest() {
-  const records = [];
-  await db.eachFile((f) => records.push(f));   // Blob-и остаются ссылками, память не растёт
+  const records = await data.allFileRecords();
   const entries = [];
-  const meta = records.map((f) => {
+  const meta = [];
+  for (const f of records) {
     const path = `files/${f.id}.${extOf(f)}`;
-    const thumbPath = f.thumb ? `thumbs/${f.id}.jpg` : null;
-    entries.push({ name: path, blob: f.blob });
-    if (f.thumb) entries.push({ name: thumbPath, blob: f.thumb });
-    return {
+    const thumbPath = f._thumb ? `thumbs/${f.id}.jpg` : null;
+    // блоб достаётся по требованию: в облаке файл скачивается прямо перед записью,
+    // поэтому память не забивается всем архивом сразу
+    entries.push({ name: path, size: f.size || 0, getBlob: () => data.getBlob(f) });
+    if (f._thumb) entries.push({ name: thumbPath, size: f._thumb.size, getBlob: async () => f._thumb });
+    meta.push({
       id: f.id, ownerType: f.ownerType, ownerId: f.ownerId, kind: f.kind,
       name: f.name, mime: f.mime, size: f.size, caption: f.caption || '',
       w: f.w || null, h: f.h || null, optimized: !!f.optimized,
-      createdAt: f.createdAt, sort: f.sort, path, thumbPath,
-    };
-  });
-  const data = {
+      createdAt: f.createdAt, sort: f.sort, path, thumbPath: f._thumb ? thumbPath : null,
+    });
+  }
+  const manifest = {
     app: 'bali-villas-crm', version: 2, exportedAt: new Date().toISOString(),
     villas: S.state.villas, bookings: S.state.bookings, clients: S.state.clients,
     settings: Object.entries(S.state.settings).map(([key, value]) => ({ key, value })),
     files: meta,
   };
-  const totalBytes = entries.reduce((s, e) => s + (e.blob.size || 0), 0);
-  return { data, entries, totalBytes };
+  const totalBytes = entries.reduce((s, e) => s + (e.size || 0), 0);
+  return { data: manifest, entries, totalBytes };
 }
 
 /* ---------- Бэкап в папку на диске (без ограничений по размеру) ---------- */
 export async function exportToDirectory(onProgress = () => {}) {
   const root = await window.showDirectoryPicker({ mode: 'readwrite', id: 'bali-villas-backup' });
-  const { data, entries, totalBytes } = await buildManifest();
+  const { data: manifest, entries, totalBytes } = await buildManifest();
 
   const dirs = new Map();
   const dirFor = async (path) => {
@@ -70,12 +72,12 @@ export async function exportToDirectory(onProgress = () => {}) {
     return true;
   };
 
-  await write('data.json', new Blob([JSON.stringify(data)], { type: 'application/json' }));
+  await write('data.json', new Blob([JSON.stringify(manifest)], { type: 'application/json' }));
   let doneBytes = 0, written = 0, skipped = 0;
   for (const e of entries) {
-    const isNew = await write(e.name, e.blob);
+    const isNew = await write(e.name, await e.getBlob());
     if (isNew) written++; else skipped++;
-    doneBytes += e.blob.size || 0;
+    doneBytes += e.size || 0;
     onProgress({ doneBytes, totalBytes, done: written + skipped, total: entries.length });
   }
   return { written, skipped, total: entries.length, bytes: totalBytes };
@@ -84,7 +86,7 @@ export async function exportToDirectory(onProgress = () => {}) {
 export async function importFromDirectory() {
   const root = await window.showDirectoryPicker({ mode: 'read', id: 'bali-villas-backup' });
   const dataFile = await (await root.getFileHandle('data.json')).getFile();
-  const data = JSON.parse(await dataFile.text());
+  const manifest = JSON.parse(await dataFile.text());
   const getBlob = async (path) => {
     if (!path) return null;
     const parts = path.split('/');
@@ -92,29 +94,30 @@ export async function importFromDirectory() {
     for (let i = 0; i < parts.length - 1; i++) dir = await dir.getDirectoryHandle(parts[i]);
     return (await (await dir.getFileHandle(parts[parts.length - 1])).getFile());
   };
-  return { data, getBlob };
+  return { data: manifest, getBlob };
 }
 
 /* ---------- Бэкап в ZIP (работает во всех браузерах) ---------- */
 export async function exportToZips(onProgress = () => {}) {
-  const { data, entries, totalBytes } = await buildManifest();
+  const { data: manifest, entries, totalBytes } = await buildManifest();
   const parts = [[]];
   let acc = 0;
   for (const e of entries) {
-    if (acc + e.blob.size > ZIP_PART_LIMIT && parts[parts.length - 1].length) {
+    if (acc + (e.size || 0) > ZIP_PART_LIMIT && parts[parts.length - 1].length) {
       parts.push([]); acc = 0;
     }
     parts[parts.length - 1].push(e);
-    acc += e.blob.size || 0;
+    acc += e.size || 0;
   }
-  parts[0].unshift({ name: 'data.json', blob: new Blob([JSON.stringify(data)], { type: 'application/json' }) });
+  const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+  parts[0].unshift({ name: 'data.json', size: manifestBlob.size, getBlob: async () => manifestBlob });
 
   const stamp = new Date().toISOString().slice(0, 10);
   let base = 0;
   for (let i = 0; i < parts.length; i++) {
     const zip = await createZip(parts[i], (doneBytes) =>
       onProgress({ part: i + 1, parts: parts.length, doneBytes: base + doneBytes, totalBytes }));
-    base += parts[i].reduce((s, e) => s + (e.blob.size || 0), 0);
+    base += parts[i].reduce((s, e) => s + (e.size || 0), 0);
     const name = parts.length === 1
       ? `bali-villas-backup-${stamp}.zip`
       : `bali-villas-backup-${stamp}-part${i + 1}of${parts.length}.zip`;
@@ -126,31 +129,31 @@ export async function exportToZips(onProgress = () => {}) {
 
 export async function importFromZips(fileList) {
   const maps = [];
-  let data = null;
+  let manifest = null;
   for (const f of [...fileList]) {
     const map = await readZip(f);
-    if (map.has('data.json')) data = JSON.parse(await map.get('data.json').text());
+    if (map.has('data.json')) manifest = JSON.parse(await map.get('data.json').text());
     maps.push(map);
   }
-  if (!data) throw new Error('В выбранных архивах нет data.json — добавьте часть 1 бэкапа');
+  if (!manifest) throw new Error('В выбранных архивах нет data.json — добавьте часть 1 бэкапа');
   const getBlob = async (path) => {
     for (const m of maps) if (m.has(path)) return m.get(path);
     return null;
   };
-  return { data, getBlob };
+  return { data: manifest, getBlob };
 }
 
 /* ---------- Применение бэкапа ---------- */
-export async function applyBackup({ data, getBlob }, { replace = false, onProgress = () => {} } = {}) {
-  if (!data || data.app !== 'bali-villas-crm') throw new Error('Неподходящий файл бэкапа');
-  if (replace) for (const s of db.STORES) await db.clear(s);
+export async function applyBackup({ data: backup, getBlob }, { replace = false, onProgress = () => {} } = {}) {
+  if (!backup || backup.app !== 'bali-villas-crm') throw new Error('Неподходящий файл бэкапа');
+  if (replace) await data.clearEverything();
 
-  for (const v of data.villas || []) await db.put('villas', v);
-  for (const b of data.bookings || []) await db.put('bookings', b);
-  for (const c of data.clients || []) await db.put('clients', c);
-  for (const s of data.settings || []) await db.put('settings', s);
+  for (const v of backup.villas || []) await data.putRow('villas', v);
+  for (const b of backup.bookings || []) await data.putRow('bookings', b);
+  for (const c of backup.clients || []) await data.putRow('clients', c);
+  for (const st of backup.settings || []) await data.putRow('settings', st);
 
-  const files = data.files || [];
+  const files = backup.files || [];
   let done = 0, restored = 0;
   for (const f of files) {
     done++;
@@ -160,16 +163,16 @@ export async function applyBackup({ data, getBlob }, { replace = false, onProgre
     else if (f.data) blob = dataUrlToBlob(f.data);   // старый JSON-бэкап версии 1
     if (!blob) continue;
     const thumb = f.thumbPath && getBlob ? await getBlob(f.thumbPath) : null;
-    await db.put('files', {
+    await data.restoreFile({
       id: f.id, ownerType: f.ownerType, ownerId: f.ownerId, kind: f.kind,
       name: f.name, mime: f.mime, size: f.size || blob.size, caption: f.caption || '',
       w: f.w || null, h: f.h || null, optimized: !!f.optimized,
-      createdAt: f.createdAt, sort: f.sort, blob, thumb,
-    });
+      createdAt: f.createdAt, sort: f.sort,
+    }, blob, thumb);
     restored++;
   }
   await S.load();
-  return { villas: (data.villas || []).length, files: restored };
+  return { villas: (backup.villas || []).length, files: restored };
 }
 
 function dataUrlToBlob(url) {   // поддержка старых JSON-бэкапов версии 1
@@ -183,16 +186,15 @@ function dataUrlToBlob(url) {   // поддержка старых JSON-бэка
 
 /** Только данные, без файлов — маленький JSON на случай быстрого переноса. */
 export async function exportDataOnly() {
-  const data = {
+  const payload = {
     app: 'bali-villas-crm', version: 2, exportedAt: new Date().toISOString(),
     villas: S.state.villas, bookings: S.state.bookings, clients: S.state.clients,
     settings: Object.entries(S.state.settings).map(([key, value]) => ({ key, value })),
     files: [],
   };
-  download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+  download(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
     `bali-villas-data-${new Date().toISOString().slice(0, 10)}.json`);
 }
 export async function importFromJson(file) {
-  const data = JSON.parse(await file.text());
-  return { data, getBlob: null };
+  return { data: JSON.parse(await file.text()), getBlob: null };
 }

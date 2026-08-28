@@ -1,6 +1,7 @@
-// ===== Точка входа и роутер =====
+// ===== Точка входа, вход в систему и роутер =====
 import * as S from './store.js';
-import * as db from './db.js';
+import * as data from './data.js';
+import * as cloud from './cloud.js';
 import { toast } from './ui.js';
 import { bookingForm } from './booking.js';
 import { renderVillasList } from './views/villas.js';
@@ -9,8 +10,8 @@ import { renderCalendar } from './views/calendar.js';
 import { renderClientsList, renderClientCard } from './views/clients.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderSettings } from './views/settings.js';
-import { revokeAll } from './files-ui.js';
-import { bytes, today, addDays } from './util.js';
+import { bytes, esc, today, addDays } from './util.js';
+import { clearCloudConfig } from './config.js';
 
 const view = document.getElementById('view');
 const actions = document.getElementById('topbar-actions');
@@ -21,8 +22,11 @@ const TITLES = {
   clients: 'Клиенты', settings: 'Настройки',
 };
 
+let currentUser = null;
+let unsubscribe = null;
+
 async function route() {
-  revokeAll();
+  data.revokeAll();
   const hash = location.hash.replace(/^#\/?/, '') || 'dashboard';
   const [page, id] = hash.split('/');
   actions.innerHTML = '';
@@ -46,21 +50,104 @@ async function route() {
     return renderDashboard(view);
   } catch (e) {
     console.error(e);
-    view.innerHTML = `<div class="empty-state"><h3>Ошибка отображения</h3><p>${e.message}</p></div>`;
+    view.innerHTML = `<div class="empty-state"><h3>Ошибка отображения</h3><p>${esc(e.message)}</p></div>`;
   }
 }
 
-async function updateStorageNote() {
-  const est = await db.storageEstimate();
+/* ---------- Экран входа ---------- */
+function showLogin(message = '') {
+  document.getElementById('app').style.display = 'none';
+  let box = document.getElementById('login-screen');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'login-screen';
+    box.className = 'login-screen';
+    document.body.appendChild(box);
+  }
+  box.hidden = false;
+  box.innerHTML = `
+    <form class="login-card" id="login-form">
+      <div class="login-logo">🌴</div>
+      <h2>Bali Villas CRM</h2>
+      <p class="hint">Вход в общую базу</p>
+      ${message ? `<div class="login-error">${esc(message)}</div>` : ''}
+      <label class="field"><span>Почта</span><input type="email" name="email" autocomplete="username" required></label>
+      <label class="field"><span>Пароль</span><input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="btn btn-primary" type="submit" id="login-btn">Войти</button>
+      <button class="btn btn-ghost btn-sm" type="button" id="forgot">Забыли пароль?</button>
+      <button class="btn btn-ghost btn-sm" type="button" id="local-mode">Отключить общую базу и работать локально</button>
+    </form>`;
+
+  box.querySelector('#login-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = box.querySelector('#login-btn');
+    btn.disabled = true; btn.textContent = 'Входим…';
+    try {
+      const fd = new FormData(e.target);
+      await cloud.signIn(fd.get('email'), fd.get('password'));
+      box.hidden = true;
+      document.getElementById('app').style.display = '';
+      await boot();
+    } catch (err) {
+      showLogin(err.message);
+    }
+  };
+  box.querySelector('#forgot').onclick = async () => {
+    const email = box.querySelector('[name=email]').value.trim();
+    if (!email) return showLogin('Введите почту, на неё придёт ссылка для смены пароля');
+    try { await cloud.sendPasswordReset(email); showLogin('Письмо со ссылкой отправлено на ' + email); }
+    catch (err) { showLogin(err.message); }
+  };
+  box.querySelector('#local-mode').onclick = () => {
+    // сбрасываем подключение, иначе приложение снова упрётся в недоступный сервер
+    clearCloudConfig();
+    cloud.resetClient();
+    location.hash = '#/settings';
+    location.reload();
+  };
+}
+
+/* ---------- Живое обновление у второго сотрудника ---------- */
+let reloadTimer = null;
+async function startRealtime() {
+  if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+  try {
+    unsubscribe = await cloud.subscribe(() => {
+      clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(async () => {
+        const modalOpen = !document.getElementById('modal-root').hidden;
+        await S.load();
+        if (!modalOpen) route();      // не выдёргиваем форму из-под рук
+      }, 500);
+    });
+  } catch (e) {
+    console.warn('Живое обновление недоступно:', e.message);
+  }
+}
+
+/* ---------- Подвал боковой панели ---------- */
+async function updateFooter() {
   const note = document.getElementById('storage-note');
-  note.innerHTML = est.usage
-    ? `💾 Локально: ${bytes(est.usage)}<br>Данные хранятся в браузере. Делайте бэкап в «Настройках».`
+  if (data.isCloud()) {
+    note.innerHTML = `☁️ Общая база${currentUser ? `<br>${esc(currentUser.email)}` : ''}
+      <br><a href="#" id="signout-link">Выйти</a>`;
+    const link = note.querySelector('#signout-link');
+    if (link) link.onclick = async (e) => {
+      e.preventDefault();
+      await cloud.signOut();
+      location.reload();
+    };
+    return;
+  }
+  const { usage } = await data.storageInfo();
+  note.innerHTML = usage
+    ? `💾 Локально: ${bytes(usage)}<br>Данные только на этом устройстве. Бэкап — в «Настройках».`
     : '💾 Данные хранятся локально в браузере. Делайте бэкап в «Настройках».';
 }
 
 window.addEventListener('hashchange', route);
-window.addEventListener('data-changed', () => { route(); updateStorageNote(); });
-S.onChange(() => updateStorageNote());
+window.addEventListener('data-changed', () => { route(); updateFooter(); });
+S.onChange(() => updateFooter());
 
 document.getElementById('btn-menu').onclick = () =>
   document.querySelector('.sidebar').classList.toggle('open');
@@ -71,16 +158,30 @@ document.getElementById('btn-quick-booking').onclick = () => {
     { onSaved: () => window.dispatchEvent(new Event('data-changed')) });
 };
 
-(async function init() {
+async function boot() {
+  if (data.isCloud()) {
+    try {
+      currentUser = await cloud.currentUser();
+    } catch (e) {
+      console.error(e);
+      showLogin('Не удалось связаться с общей базой: ' + e.message);
+      return;
+    }
+    if (!currentUser) return showLogin();
+    await startRealtime();
+  }
   try {
     await S.load();
   } catch (e) {
     console.error(e);
+    if (data.isCloud()) return showLogin('Ошибка загрузки данных: ' + e.message);
     toast('Не удалось открыть локальную базу: ' + e.message, true);
   }
-  if (navigator.storage && navigator.storage.persist) {
+  if (!data.isCloud() && navigator.storage && navigator.storage.persist) {
     try { await navigator.storage.persist(); } catch (e) { void e; }
   }
-  await updateStorageNote();
+  await updateFooter();
   route();
-})();
+}
+
+boot();

@@ -1,7 +1,7 @@
 // ===== Список вилл =====
 import * as S from '../store.js';
 import { esc, money, num, PERIODS, sortBy } from '../util.js';
-import { coverPhoto, blobUrl } from '../files-ui.js';
+import { coverPhoto } from '../files-ui.js';
 import { villaForm } from './villa.js';
 
 export async function renderVillasList(view, actions) {
@@ -84,7 +84,7 @@ export async function renderVillasList(view, actions) {
     for (const v of list) {
       const cover = await coverPhoto('villa', v.id);
       const el = box.querySelector(`[data-cover="${v.id}"]`);
-      if (cover && el) el.innerHTML = `<img src="${blobUrl(cover.blob)}" alt="${esc(v.name)}"><span class="photo-count">📸 ${cover.count}</span>`;
+      if (cover && el) el.innerHTML = `<img src="${esc(cover.src)}" alt="${esc(v.name)}"><span class="photo-count">📸 ${cover.count}</span>`;
     }
   }
 

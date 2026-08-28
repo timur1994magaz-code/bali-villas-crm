@@ -1,7 +1,10 @@
 // ===== Настройки: валюта, качество фото, бэкап, хранилище =====
 import * as S from '../store.js';
-import * as db from '../db.js';
+import * as data from '../data.js';
+import * as cloud from '../cloud.js';
 import * as B from '../backup.js';
+import * as migrate from '../migrate.js';
+import { cloudConfig, setCloudConfig, clearCloudConfig } from '../config.js';
 import { toast, confirmDialog, field, formData, modal, closeModal } from '../ui.js';
 import { CURRENCIES, bytes, esc } from '../util.js';
 
@@ -13,8 +16,11 @@ const QUALITY = [
 
 export async function renderSettings(view, actions) {
   actions.innerHTML = '';
-  const est = await db.storageEstimate();
-  const st = await db.fileStats();
+  const est = await data.storageInfo();
+  const st = await data.fileStats();
+  const isCloud = data.isCloud();
+  const cfg = cloudConfig();
+  const user = isCloud ? await cloud.currentUser().catch(() => null) : null;
   const free = est.quota ? est.quota - est.usage : 0;
   const pct = est.quota ? Math.min(100, (est.usage / est.quota) * 100) : 0;
   const quality = localStorage.getItem('photoQuality') || 'original';
@@ -32,17 +38,50 @@ export async function renderSettings(view, actions) {
         <div style="margin-top:12px"><button class="btn btn-primary btn-sm" id="save-set">Сохранить</button></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><h3>💾 Хранилище</h3></div>
-        <div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%;background:${pct > 85 ? 'var(--danger)' : pct > 60 ? 'var(--warn)' : 'var(--acc)'}"></div></div>
-        <div class="hint" style="margin:6px 0 12px">Занято ${bytes(est.usage)} из ~${bytes(est.quota)}${free ? ` · свободно ${bytes(free)}` : ''}</div>
+        <div class="panel-head"><h3>💾 Хранилище</h3>${isCloud ? '<div class="spacer"></div><span class="cloud-badge">☁️ общая база</span>' : ''}</div>
+        ${isCloud ? `<div class="hint" style="margin-bottom:12px">Файлы лежат в хранилище Supabase: ${bytes(est.usage)}. На бесплатном тарифе доступен 1 ГБ, на Pro — 100 ГБ.</div>`
+        : `<div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%;background:${pct > 85 ? 'var(--danger)' : pct > 60 ? 'var(--warn)' : 'var(--acc)'}"></div></div>
+        <div class="hint" style="margin:6px 0 12px">Занято ${bytes(est.usage)} из ~${bytes(est.quota)}${free ? ` · свободно ${bytes(free)}` : ''}</div>`}
         <dl class="kv">
           <dt>Виллы / брони / клиенты</dt><dd>${S.state.villas.length} / ${S.state.bookings.length} / ${S.state.clients.length}</dd>
           <dt>Фотографии</dt><dd>${st.photos}${st.photos ? ` · в среднем ${bytes(avgPhoto)}` : ''}</dd>
           <dt>Документы</dt><dd>${st.docs}</dd>
           <dt>Объём файлов</dt><dd>${bytes(st.size)}</dd>
-          <dt>Превью (для скорости)</dt><dd>${bytes(st.thumbSize)}</dd>
+          ${st.thumbSize ? `<dt>Превью (для скорости)</dt><dd>${bytes(st.thumbSize)}</dd>` : ''}
         </dl>
       </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h3>👥 Общая база и доступ сотрудников</h3>
+        <div class="spacer"></div>
+        <span class="badge ${isCloud ? 'b-occupied' : 'b-off'}">${isCloud ? 'подключена' : 'выключена'}</span>
+      </div>
+      ${isCloud ? `
+        <dl class="kv">
+          <dt>Проект Supabase</dt><dd class="mono">${esc(cfg.url)}</dd>
+          <dt>Вы вошли как</dt><dd>${esc(user ? user.email : '—')}</dd>
+        </dl>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="migrate">⬆︎ Перенести локальную базу в общую</button>
+          <button class="btn" id="cloud-check">Проверить связь</button>
+          <button class="btn btn-danger" id="cloud-off">Отключить общую базу</button>
+        </div>
+        <div class="hint" style="margin-top:12px">
+          Сотрудников добавляйте в панели Supabase: <b>Authentication → Users → Add user</b> — задайте почту и пароль, и человек сможет войти.
+          Там же доступ отзывается. Изменения у всех появляются сразу, без обновления страницы.
+        </div>`
+      : `
+        <div class="hint" style="margin-bottom:12px">
+          Сейчас база живёт только в этом браузере, поэтому доступ сотруднику выдать нельзя.
+          Подключите проект Supabase — данные, фото и документы переедут в общее хранилище, а вход будет по почте и паролю.
+          Пошаговая инструкция — в файле <code>SETUP-SUPABASE.md</code> в репозитории.
+        </div>
+        ${field('supabaseUrl', 'Project URL', { value: cfg.url, placeholder: 'https://xxxxxxxx.supabase.co' })}
+        <div style="margin-top:10px">${field('supabaseKey', 'Anon public key', { value: cfg.key, placeholder: 'eyJhbGciOi…' })}</div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn btn-primary" id="cloud-on">Подключить общую базу</button>
+        </div>`}
     </div>
 
     <div class="panel">
@@ -187,6 +226,59 @@ export async function renderSettings(view, actions) {
     try { await restore(await B.importFromJson(jsonInput.files[0])); }
     catch (e) { toast('Ошибка чтения файла: ' + e.message, true); }
     jsonInput.value = '';
+  };
+
+  // --- общая база ---
+  const onBtn = view.querySelector('#cloud-on');
+  if (onBtn) onBtn.onclick = async () => {
+    const d = formData(view);
+    if (!d.supabaseUrl || !d.supabaseKey) return toast('Заполните Project URL и Anon key', true);
+    setCloudConfig(d.supabaseUrl, d.supabaseKey);
+    cloud.resetClient();
+    try {
+      await cloud.getClient();
+      toast('Подключено. Сейчас откроется вход в систему');
+      setTimeout(() => location.reload(), 900);
+    } catch (e) {
+      clearCloudConfig();
+      toast('Не удалось подключиться: ' + e.message, true);
+    }
+  };
+  const offBtn = view.querySelector('#cloud-off');
+  if (offBtn) offBtn.onclick = async () => {
+    if (!await confirmDialog('Отключить общую базу? Данные в облаке останутся, но это устройство вернётся к локальной базе.',
+      { title: 'Отключение', okText: 'Отключить' })) return;
+    try { await cloud.signOut(); } catch (e) { void e; }
+    clearCloudConfig();
+    location.reload();
+  };
+  const checkBtn = view.querySelector('#cloud-check');
+  if (checkBtn) checkBtn.onclick = async () => {
+    try {
+      const t = Date.now();
+      const res = await cloud.loadAll();
+      toast(`Связь есть: вилл ${res.villas.length}, броней ${res.bookings.length} (${Date.now() - t} мс)`);
+    } catch (e) { toast('Нет связи: ' + e.message, true); }
+  };
+  const migBtn = view.querySelector('#migrate');
+  if (migBtn) migBtn.onclick = async () => {
+    const c = await migrate.localCounts();
+    if (!c.villas && !c.clients && !c.files) return toast('В локальной базе этого браузера ничего нет', true);
+    const ok = await confirmDialog(
+      `Перенести в общую базу: вилл ${c.villas}, клиентов ${c.clients}, броней ${c.bookings}, файлов ${c.files} (${bytes(c.bytes)})? Записи с теми же номерами будут перезаписаны.`,
+      { title: 'Перенос в общую базу', okText: 'Перенести', danger: false });
+    if (!ok) return;
+    const pg = progressModal('Перенос в общую базу');
+    try {
+      const r = await migrate.localToCloud(({ step, totalSteps, label }) => pg.set(`${step} из ${totalSteps} · ${label}`, step, totalSteps));
+      pg.done();
+      toast(`Перенесено: вилл ${r.villas}, клиентов ${r.clients}, файлов ${r.uploaded}${r.failed ? `, не удалось ${r.failed}` : ''}`);
+      await S.load();
+      refresh();
+    } catch (e) {
+      pg.done();
+      toast('Перенос прерван: ' + e.message, true);
+    }
   };
 
   view.querySelector('#seed').onclick = async () => {

@@ -1,5 +1,6 @@
 // ===== Хранилище данных приложения (поверх IndexedDB) =====
 import * as db from './db.js';
+import * as data from './data.js';
 import { ymd, overlaps, num, daysBetween, today } from './util.js';
 
 export const state = { villas: [], bookings: [], clients: [], settings: {} };
@@ -8,13 +9,11 @@ export function onChange(fn) { listeners.add(fn); return () => listeners.delete(
 function emit() { listeners.forEach((f) => f()); }
 
 export async function load() {
-  const [villas, bookings, clients, settings] = await Promise.all([
-    db.all('villas'), db.all('bookings'), db.all('clients'), db.all('settings'),
-  ]);
+  const { villas, bookings, clients, settings } = await data.loadAll();
   state.villas = villas.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
   state.bookings = bookings.sort((a, b) => String(a.dateFrom).localeCompare(String(b.dateFrom)));
   state.clients = clients.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
-  state.settings = Object.fromEntries(settings.map((s) => [s.key, s.value]));
+  state.settings = settings || {};
   if (!state.settings.currency) state.settings.currency = 'USD';
   emit();
 }
@@ -38,15 +37,15 @@ export function emptyVilla() {
 export async function saveVilla(v) {
   v.updatedAt = new Date().toISOString();
   if (!v.createdAt) v.createdAt = v.updatedAt;
-  await db.put('villas', v);
+  await data.putRow('villas', v);
   await load();
   return v;
 }
 export async function deleteVilla(id) {
   const bs = state.bookings.filter((b) => b.villaId === id);
-  for (const b of bs) { await db.deleteFilesOf('booking', b.id); await db.del('bookings', b.id); }
-  await db.deleteFilesOf('villa', id);
-  await db.del('villas', id);
+  for (const b of bs) { await data.removeFilesOf('booking', b.id); await data.delRow('bookings', b.id); }
+  await data.removeFilesOf('villa', id);
+  await data.delRow('villas', id);
   await load();
 }
 
@@ -61,16 +60,16 @@ export function emptyClient() {
 export async function saveClient(c) {
   c.updatedAt = new Date().toISOString();
   if (!c.createdAt) c.createdAt = c.updatedAt;
-  await db.put('clients', c);
+  await data.putRow('clients', c);
   await load();
   return c;
 }
 export async function deleteClient(id) {
-  await db.deleteFilesOf('client', id);
+  await data.removeFilesOf('client', id);
   for (const b of state.bookings.filter((b) => b.clientId === id)) {
-    b.clientId = ''; await db.put('bookings', b);
+    b.clientId = ''; await data.putRow('bookings', b);
   }
-  await db.del('clients', id);
+  await data.delRow('clients', id);
   await load();
 }
 
@@ -86,13 +85,13 @@ export function emptyBooking(villaId = '', dateFrom = today(), dateTo = '') {
 export async function saveBooking(b) {
   b.updatedAt = new Date().toISOString();
   if (!b.createdAt) b.createdAt = b.updatedAt;
-  await db.put('bookings', b);
+  await data.putRow('bookings', b);
   await load();
   return b;
 }
 export async function deleteBooking(id) {
-  await db.deleteFilesOf('booking', id);
-  await db.del('bookings', id);
+  await data.removeFilesOf('booking', id);
+  await data.delRow('bookings', id);
   await load();
 }
 
@@ -155,7 +154,7 @@ export function revenueInRange(from, to) {
 
 // ===== Настройки =====
 export async function setSetting(key, value) {
-  await db.put('settings', { key, value });
+  await data.putRow('settings', { key, value });
   state.settings[key] = value;
   emit();
 }
@@ -163,7 +162,7 @@ export async function setSetting(key, value) {
 // ===== Экспорт / импорт живёт в backup.js (папка / ZIP / JSON) =====
 
 export async function wipeAll() {
-  for (const s of db.STORES) await db.clear(s);
+  await data.clearEverything();
   await load();
 }
 
@@ -184,22 +183,22 @@ export async function seedDemo() {
     terms: 'Субаренда 24 месяца, продление по той же ставке +7%.',
     ownerPrice: '1800', ownerPeriod: 'month', ourPriceNight: '160', ourPriceMonth: '3100', currency: 'USD',
     mapUrl: 'https://www.google.com/maps/@-8.8065,115.1141,17z', lat: '-8.8065', lng: '115.1141' };
-  await db.put('villas', v1); await db.put('villas', v2);
+  await data.putRow('villas', v1); await data.putRow('villas', v2);
 
   const c1 = { ...emptyClient(), name: 'Анна Петрова', phone: '+7 916 123-45-67', whatsapp: '+79161234567',
     telegram: '@anna_p', email: 'anna@example.com', country: 'Россия', source: 'Instagram' };
   const c2 = { ...emptyClient(), name: 'James Miller', phone: '+61 400 111 222', whatsapp: '+61400111222',
     email: 'james@example.com', country: 'Австралия', source: 'Airbnb' };
-  await db.put('clients', c1); await db.put('clients', c2);
+  await data.putRow('clients', c1); await data.putRow('clients', c2);
 
   const t = today();
-  await db.put('bookings', { ...emptyBooking(v1.id, t, ''), dateFrom: t, dateTo: addD(t, 9),
+  await data.putRow('bookings', { ...emptyBooking(v1.id, t, ''), dateFrom: t, dateTo: addD(t, 9),
     clientId: c1.id, status: 'occupied', guests: '2', priceTotal: '1710', prepaid: '855', currency: 'USD', source: 'Instagram' });
-  await db.put('bookings', { ...emptyBooking(v1.id), dateFrom: addD(t, 14), dateTo: addD(t, 27),
+  await data.putRow('bookings', { ...emptyBooking(v1.id), dateFrom: addD(t, 14), dateTo: addD(t, 27),
     clientId: c2.id, status: 'booked', guests: '4', priceTotal: '2470', prepaid: '700', currency: 'USD', source: 'Airbnb' });
-  await db.put('bookings', { ...emptyBooking(v2.id), dateFrom: addD(t, 3), dateTo: addD(t, 12),
+  await data.putRow('bookings', { ...emptyBooking(v2.id), dateFrom: addD(t, 3), dateTo: addD(t, 12),
     clientId: c2.id, status: 'booked', guests: '2', priceTotal: '1440', currency: 'USD', source: 'Booking.com' });
-  await db.put('bookings', { ...emptyBooking(v2.id), dateFrom: addD(t, 30), dateTo: addD(t, 35),
+  await data.putRow('bookings', { ...emptyBooking(v2.id), dateFrom: addD(t, 30), dateTo: addD(t, 35),
     status: 'blocked', notes: 'Ремонт бассейна' });
   await load();
 }

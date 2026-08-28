@@ -31,7 +31,7 @@ function dosTime(d = new Date()) {
 }
 
 /**
- * Собирает ZIP без сжатия. entries: [{name, blob}]
+ * Собирает ZIP без сжатия. entries: [{name, blob}] либо [{name, size, getBlob}]
  * Возвращает Blob — части остаются ссылками, поэтому размер не ограничен памятью.
  * Ограничение формата ZIP32: до 4 ГБ на архив (выше — разбивайте на части).
  */
@@ -41,15 +41,16 @@ export async function createZip(entries, onProgress) {
   let offset = 0;
   const { time, date } = dosTime();
   let doneBytes = 0;
-  const totalBytes = entries.reduce((s, e) => s + (e.blob.size || 0), 0);
+  const totalBytes = entries.reduce((s, e) => s + (e.size !== undefined ? e.size : (e.blob ? e.blob.size : 0)), 0);
 
   for (const e of entries) {
     const nameBytes = te.encode(e.name);
-    const crc = await crc32(e.blob, (n) => {
+    const blob = e.blob || await e.getBlob();
+    const crc = await crc32(blob, (n) => {
       doneBytes += n;
       if (onProgress) onProgress(doneBytes, totalBytes);
     });
-    const size = e.blob.size;
+    const size = blob.size;
 
     const lh = new DataView(new ArrayBuffer(30));
     lh.setUint32(0, 0x04034b50, true);
@@ -63,7 +64,7 @@ export async function createZip(entries, onProgress) {
     lh.setUint32(22, size, true);
     lh.setUint16(26, nameBytes.length, true);
     lh.setUint16(28, 0, true);
-    parts.push(lh.buffer, nameBytes, e.blob);
+    parts.push(lh.buffer, nameBytes, blob);
 
     const cd = new DataView(new ArrayBuffer(46));
     cd.setUint32(0, 0x02014b50, true);

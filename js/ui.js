@@ -66,22 +66,22 @@ export function toast(msg, isErr = false) {
 }
 
 // ===== Лайтбокс для фото =====
-let lbItems = [], lbIdx = 0, lbUrls = [];
+// items: [{ url, name, caption }] — ссылки уже разрешены вызывающей стороной
+let lbItems = [], lbIdx = 0;
 export function openLightbox(items, index = 0) {
-  lbUrls.forEach((u) => URL.revokeObjectURL(u));
-  lbItems = items;
-  lbUrls = items.map((f) => URL.createObjectURL(f.blob));
+  lbItems = items || [];
   lbIdx = index;
+  if (!lbItems.length) return;
   const lb = document.getElementById('lightbox');
   lb.hidden = false;
   renderLb();
 }
 function renderLb() {
   if (!lbItems.length) return;
-  document.getElementById('lightbox-img').src = lbUrls[lbIdx];
   const f = lbItems[lbIdx];
+  document.getElementById('lightbox-img').src = f.url;
   document.getElementById('lightbox-caption').textContent =
-    `${lbIdx + 1} / ${lbItems.length} — ${f.caption || f.name}`;
+    `${lbIdx + 1} / ${lbItems.length} — ${f.caption || f.name || ''}`;
 }
 document.addEventListener('DOMContentLoaded', () => {
   const lb = document.getElementById('lightbox');

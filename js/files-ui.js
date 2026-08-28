@@ -1,12 +1,11 @@
 // ===== Загрузка/показ файлов: фотогалерея и документы =====
+import * as data from './data.js';
 import * as db from './db.js';
 import { esc, bytes, download, fmtDateShort } from './util.js';
 import { toast, confirmDialog, openLightbox } from './ui.js';
 import { makeThumb, prepareOriginal, isHeic, supportsHeic } from './images.js';
 
-const objectUrls = new Set();
-function url(blob) { const u = URL.createObjectURL(blob); objectUrls.add(u); return u; }
-export function revokeAll() { objectUrls.forEach((u) => URL.revokeObjectURL(u)); objectUrls.clear(); }
+export const revokeAll = data.revokeAll;
 
 function fileIcon(mime, name) {
   const n = (name || '').toLowerCase();
@@ -19,13 +18,12 @@ function fileIcon(mime, name) {
   return '📎';
 }
 
-function photoQuality() {
-  return localStorage.getItem('photoQuality') || 'original';
-}
+function photoQuality() { return localStorage.getItem('photoQuality') || 'original'; }
 
-/** Предупреждение, если браузеру осталось мало места. */
+/** Предупреждение, если браузеру осталось мало места (только локальный режим). */
 async function checkQuota(incoming = 0) {
-  const { usage, quota } = await db.storageEstimate();
+  if (data.isCloud()) return true;
+  const { usage, quota } = await data.storageInfo();
   if (!quota) return true;
   const free = quota - usage;
   if (free < incoming) {
@@ -40,7 +38,7 @@ async function checkQuota(incoming = 0) {
 
 /** Фотогалерея с загрузкой (drag&drop + выбор файлов). */
 export async function renderPhotos(box, ownerType, ownerId, opts = {}) {
-  const files = await db.filesOf(ownerType, ownerId, 'photo');
+  const files = await data.listFiles(ownerType, ownerId, 'photo');
   const totalSize = files.reduce((s, f) => s + (f.size || 0), 0);
   const qMode = photoQuality();
 
@@ -65,9 +63,7 @@ export async function renderPhotos(box, ownerType, ownerId, opts = {}) {
   } else {
     grid.innerHTML = files.map((f, i) => `
       <div class="photo-item" data-i="${i}" title="${esc(f.name)}">
-        ${f.thumb || f.blob
-          ? `<img src="${url(f.thumb || f.blob)}" alt="${esc(f.caption || f.name)}" loading="lazy">`
-          : ''}
+        ${f.thumbSrc ? `<img src="${esc(f.thumbSrc)}" alt="${esc(f.caption || f.name)}" loading="lazy">` : ''}
         <div class="photo-tools">
           ${i === 0 ? '' : `<button data-act="cover" data-id="${f.id}" title="Сделать обложкой">★</button>`}
           <button data-act="dl" data-id="${f.id}" title="Скачать оригинал">⬇︎</button>
@@ -87,8 +83,7 @@ export async function renderPhotos(box, ownerType, ownerId, opts = {}) {
   const upload = async (fileList) => {
     const arr = [...fileList].filter((f) => f.type.startsWith('image/') || isHeic(f));
     if (!arr.length) return toast('Выберите изображения', true);
-    const incoming = arr.reduce((s, f) => s + f.size, 0);
-    if (!await checkQuota(incoming)) return;
+    if (!await checkQuota(arr.reduce((s, f) => s + f.size, 0))) return;
     if (arr.some(isHeic) && !supportsHeic()) {
       toast('HEIC-файлы этот браузер не показывает. На iPhone: Настройки → Камера → Форматы → «Наиболее совместимый»', true);
     }
@@ -99,7 +94,7 @@ export async function renderPhotos(box, ownerType, ownerId, opts = {}) {
       try {
         const { file, optimized } = await prepareOriginal(raw, qMode);
         const { thumb, w, h } = await makeThumb(file);
-        await db.saveFile(ownerType, ownerId, file, 'photo', '', { thumb, w, h, optimized, sort: sort++ });
+        await data.saveUpload(ownerType, ownerId, file, 'photo', '', { thumb, w, h, optimized, sort: sort++ });
         done++;
       } catch (e) {
         console.error(e);
@@ -119,49 +114,64 @@ export async function renderPhotos(box, ownerType, ownerId, opts = {}) {
   dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('over'); upload(e.dataTransfer.files); };
 
   const dlAll = box.querySelector('[data-dl-all]');
-  if (dlAll) dlAll.onclick = () => files.forEach((f, i) => setTimeout(() => download(f.blob, f.name), i * 250));
+  if (dlAll) dlAll.onclick = async () => {
+    toast(`Скачиваем ${files.length} фото…`);
+    for (const f of files) {
+      download(await data.getBlob(f), f.name);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  };
 
   grid.onclick = async (e) => {
     const btn = e.target.closest('button[data-act]');
     if (btn) {
       e.stopPropagation();
       const f = files.find((x) => x.id === btn.dataset.id);
-      if (btn.dataset.act === 'dl') return download(f.blob, f.name);
+      if (btn.dataset.act === 'dl') return download(await data.getBlob(f), f.name);
       if (btn.dataset.act === 'cover') {
-        f.sort = (files[0].sort || Date.now()) - 1;
-        await db.put('files', f); reload(); return;
+        await data.updateFile({ ...f, sort: (files[0].sort || Date.now()) - 1 });
+        reload(); return;
       }
       if (btn.dataset.act === 'del') {
-        if (await confirmDialog(`Удалить фото «${f.name}»?`)) { await db.del('files', f.id); reload(); }
+        if (await confirmDialog(`Удалить фото «${f.name}»?`)) { await data.removeFile(f); reload(); }
         return;
       }
       if (btn.dataset.act === 'cap') {
         const cap = prompt('Подпись к фото:', f.caption || '');
-        if (cap !== null) { f.caption = cap; await db.put('files', f); reload(); }
+        if (cap !== null) { await data.updateFile({ ...f, caption: cap }); reload(); }
         return;
       }
     }
     const item = e.target.closest('.photo-item');
-    if (item) openLightbox(files, Number(item.dataset.i));
+    if (item) {
+      const items = await Promise.all(files.map(async (f) => ({
+        url: await data.fileUrl(f), name: f.name, caption: f.caption,
+      })));
+      openLightbox(items, Number(item.dataset.i));
+    }
   };
 
-  // Догоняем превью для фото, загруженных до появления этой функции
-  const missing = files.filter((f) => !f.thumb);
-  if (missing.length) {
-    prog.textContent = `Готовим превью для ${missing.length} фото…`;
-    for (const f of missing) {
-      const { thumb, w, h } = await makeThumb(f.blob);
-      if (thumb) await db.put('files', { ...f, thumb, w, h });
+  // Догоняем превью для фото, загруженных до появления этой функции (локальный режим)
+  if (!data.isCloud()) {
+    const missing = files.filter((f) => !f._thumb);
+    if (missing.length) {
+      prog.textContent = `Готовим превью для ${missing.length} фото…`;
+      for (const f of missing) {
+        const { thumb, w, h } = await makeThumb(f._blob);
+        if (!thumb) continue;
+        const stored = await db.get('files', f.id);
+        if (stored) await db.put('files', { ...stored, thumb, w, h });
+      }
+      prog.textContent = '';
+      reload();
     }
-    prog.textContent = '';
-    reload();
   }
 }
 
 /** Документы (договор, паспорт, чеки…) */
 export async function renderDocs(box, ownerType, ownerId, opts = {}) {
   const title = opts.title || '📁 Документы';
-  const files = await db.filesOf(ownerType, ownerId, 'doc');
+  const files = await data.listFiles(ownerType, ownerId, 'doc');
   box.innerHTML = `
     <div class="panel-head">
       <h3>${title}${files.length ? ` <span class="mute">(${files.length})</span>` : ''}</h3>
@@ -194,7 +204,7 @@ export async function renderDocs(box, ownerType, ownerId, opts = {}) {
     if (!await checkQuota(arr.reduce((s, f) => s + f.size, 0))) return;
     let done = 0;
     for (const f of arr) {
-      try { await db.saveFile(ownerType, ownerId, f, 'doc'); done++; }
+      try { await data.saveUpload(ownerType, ownerId, f, 'doc'); done++; }
       catch (e) { toast(`Не удалось загрузить ${f.name}: ${e.message}`, true); }
     }
     if (done) toast(`Загружено файлов: ${done}`);
@@ -211,19 +221,18 @@ export async function renderDocs(box, ownerType, ownerId, opts = {}) {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const f = files.find((x) => x.id === btn.dataset.id);
-    if (btn.dataset.act === 'dl') return download(f.blob, f.name);
-    if (btn.dataset.act === 'open') return window.open(url(f.blob), '_blank');
+    if (btn.dataset.act === 'dl') return download(await data.getBlob(f), f.name);
+    if (btn.dataset.act === 'open') return window.open(await data.fileUrl(f), '_blank');
     if (btn.dataset.act === 'del' && await confirmDialog(`Удалить файл «${f.name}»?`)) {
-      await db.del('files', f.id); reload();
+      await data.removeFile(f); reload();
     }
   };
 }
 
-/** Обложка виллы: одна запись через курсор + превью вместо оригинала. */
+/** Обложка виллы: одна запись + превью вместо оригинала. */
 export async function coverPhoto(ownerType, ownerId) {
-  const first = await db.firstPhoto(ownerType, ownerId);
+  const first = await data.firstPhoto(ownerType, ownerId);
   if (!first) return null;
-  const count = await db.countFiles(ownerType, ownerId, 'photo');
-  return { blob: first.thumb || first.blob, count };
+  const count = await data.countPhotos(ownerType, ownerId);
+  return { src: first.thumbSrc, count };
 }
-export function blobUrl(blob) { return url(blob); }
