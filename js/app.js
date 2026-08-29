@@ -74,8 +74,10 @@ function showLogin(message = '') {
       <label class="field"><span>Почта</span><input type="email" name="email" autocomplete="username" required></label>
       <label class="field"><span>Пароль</span><input type="password" name="password" autocomplete="current-password" required></label>
       <button class="btn btn-primary" type="submit" id="login-btn">Войти</button>
+      ${message ? '<button class="btn btn-ghost btn-sm" type="button" id="retry">↻ Повторить</button>' : ''}
       ${data.canResetPassword() ? '<button class="btn btn-ghost btn-sm" type="button" id="forgot">Забыли пароль?</button>' : ''}
-      ${data.isServer() ? '<p class="hint">Пароль забыли? Его сбросит владелец в разделе «Сотрудники».</p>'
+      ${data.isServer() ? `<p class="hint">Пароль забыли? Его сбросит владелец в разделе «Сотрудники».</p>
+          ${message ? '<button class="btn btn-ghost btn-sm" type="button" id="server-forget">Работать локально на этом устройстве</button>' : ''}`
         : '<button class="btn btn-ghost btn-sm" type="button" id="local-mode">Отключить общую базу и работать локально</button>'}
     </form>`;
 
@@ -99,6 +101,14 @@ function showLogin(message = '') {
     if (!email) return showLogin('Введите почту, на неё придёт ссылка для смены пароля');
     try { await cloud.sendPasswordReset(email); showLogin('Письмо со ссылкой отправлено на ' + email); }
     catch (err) { showLogin(err.message); }
+  };
+  const retry = box.querySelector('#retry');
+  if (retry) retry.onclick = () => location.reload();
+  const forgetBtn = box.querySelector('#server-forget');
+  if (forgetBtn) forgetBtn.onclick = async () => {
+    if (!confirm('Работать локально? Данные с сервера видны не будут, а всё введённое здесь останется только в этом браузере.')) return;
+    (await import('./selfhost.js')).forget();
+    location.reload();
   };
   const localBtn = box.querySelector('#local-mode');
   if (localBtn) localBtn.onclick = () => {

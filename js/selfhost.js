@@ -2,7 +2,23 @@
 // Все адреса относительные — приложение работает и в корне домена, и в подпапке.
 
 const api = (p) => new URL(p, document.baseURI).toString();
+const REMEMBER_KEY = 'crmServerOrigin';
 let _probed = null;
+
+/** Этот адрес уже работал как наш сервер? */
+export function isRemembered() {
+  try { return localStorage.getItem(REMEMBER_KEY) === location.origin; }
+  catch (e) { void e; return false; }
+}
+function remember(yes) {
+  try {
+    if (yes) localStorage.setItem(REMEMBER_KEY, location.origin);
+  } catch (e) { void e; }
+}
+/** Явный отказ от серверного режима на этом устройстве (кнопка на экране входа). */
+export function forget() {
+  try { localStorage.removeItem(REMEMBER_KEY); } catch (e) { void e; }
+}
 
 async function req(path, { method = 'GET', json, form, raw = false } = {}) {
   const headers = {};
@@ -22,18 +38,26 @@ async function req(path, { method = 'GET', json, form, raw = false } = {}) {
   return data;
 }
 
-/** Проверяем один раз при запуске: обслуживает ли нас собственный сервер. */
+/**
+ * Проверяем один раз при запуске: обслуживает ли нас собственный сервер.
+ * Если сервер здесь уже работал, но сейчас не ответил — остаёмся в серверном режиме
+ * и показываем ошибку связи. Молча переключиться на пустую локальную базу нельзя:
+ * так сотрудник вносил бы виллы не туда и был бы уверен, что всё в порядке.
+ */
 export async function probe() {
   if (_probed !== null) return _probed;
+  const known = isRemembered();
   try {
-    const ctl = AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined;
+    const ctl = AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined;
     const res = await fetch(api('api/health'), { signal: ctl, credentials: 'same-origin' });
-    if (!res.ok) { _probed = false; return false; }
+    if (!res.ok) { _probed = known; return _probed; }
     const data = await res.json();
-    _probed = data && data.app === 'bali-villas-crm' && data.mode === 'server';
+    const isOurs = !!(data && data.app === 'bali-villas-crm' && data.mode === 'server');
+    if (isOurs) remember(true);
+    _probed = isOurs || known;
   } catch (e) {
     void e;
-    _probed = false;
+    _probed = known;      // сеть подвела — но сервер тут был
   }
   return _probed;
 }
