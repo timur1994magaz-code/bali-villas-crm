@@ -73,9 +73,13 @@ else
   SCHEME=http
 fi
 
-say "Ежедневная резервная копия в 3:00"
+say "Резервные копии по расписанию"
 chmod +x "$APP_DIR/deploy/backup.sh"
-( crontab -l 2>/dev/null | grep -v 'bali-crm/deploy/backup.sh' ; echo "0 3 * * * $APP_DIR/deploy/backup.sh >> /var/log/bali-crm-backup.log 2>&1" ) | crontab -
+# база — каждую ночь (весит килобайты), полный архив с фотографиями — раз в неделю
+# и только если на диске есть запас; существующие задания crontab сохраняются
+( crontab -l 2>/dev/null | grep -v 'bali-crm/deploy/backup.sh' ; \
+  echo "0 3 * * * $APP_DIR/deploy/backup.sh >> /var/log/bali-crm-backup.log 2>&1" ; \
+  echo "30 3 * * 0 $APP_DIR/deploy/backup.sh --full >> /var/log/bali-crm-backup.log 2>&1" ) | crontab -
 
 cat <<FINAL
 
