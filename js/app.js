@@ -5,6 +5,7 @@ import * as cloud from './cloud.js';
 import { toast } from './ui.js';
 import { bookingForm } from './booking.js';
 import { renderVillasList } from './views/villas.js';
+import { renderSearch } from './views/search.js';
 import { renderVillaCard, villaForm } from './views/villa.js';
 import { renderCalendar } from './views/calendar.js';
 import { renderClientsList, renderClientCard } from './views/clients.js';
@@ -18,8 +19,8 @@ const actions = document.getElementById('topbar-actions');
 const titleEl = document.getElementById('page-title');
 
 const TITLES = {
-  dashboard: 'Дашборд', villas: 'Виллы', calendar: 'Календарь занятости',
-  clients: 'Клиенты', settings: 'Настройки',
+  dashboard: 'Дашборд', villas: 'Виллы', search: 'Подбор виллы под запрос',
+  calendar: 'Календарь занятости', clients: 'Клиенты', settings: 'Настройки',
 };
 
 let currentUser = null;
@@ -42,6 +43,7 @@ async function route() {
 
   try {
     if (page === 'villas') return renderVillasList(view, actions);
+    if (page === 'search') return renderSearch(view, actions);
     if (page === 'villa') return renderVillaCard(view, actions, id);
     if (page === 'calendar') return renderCalendar(view, actions);
     if (page === 'clients') return renderClientsList(view, actions);

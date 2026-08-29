@@ -6,7 +6,7 @@ import * as B from '../backup.js';
 import * as migrate from '../migrate.js';
 import { cloudConfig, setCloudConfig, clearCloudConfig } from '../config.js';
 import { toast, confirmDialog, field, formData, modal, closeModal } from '../ui.js';
-import { CURRENCIES, bytes, esc } from '../util.js';
+import { bytes, esc } from '../util.js';
 
 const QUALITY = [
   { value: 'original', label: 'Оригинал — без сжатия (максимальное качество)' },
@@ -32,8 +32,7 @@ export async function renderSettings(view, actions) {
     <div class="grid-2">
       <div class="panel">
         <div class="panel-head"><h3>⚙️ Общие</h3></div>
-        ${field('currency', 'Валюта по умолчанию', { options: CURRENCIES, value: S.state.settings.currency })}
-        <div style="margin-top:12px">
+        <div>
           ${field('photoQuality', 'Качество хранения фото', { options: QUALITY, value: quality,
             hint: 'Влияет на новые загрузки у всех сотрудников. Оригинал — без потери качества; 2560 px экономит место в разы при том же виде на экране. Оригиналы можно хранить на Google Диске — ссылка задаётся в карточке виллы.' })}
         </div>
@@ -156,106 +155,6 @@ export async function renderSettings(view, actions) {
     </div>`;
 
   const refresh = () => renderSettings(view, actions);
-
-  view.querySelector('#save-set').onclick = async () => {
-    const d = formData(view);
-    await S.setSetting('currency', d.currency);
-    await S.setSetting('photoQuality', d.photoQuality);
-    localStorage.setItem('photoQuality', d.photoQuality);   // подстраховка для локального режима
-    toast(isRemote ? 'Сохранено для всех сотрудников' : 'Сохранено');
-  };
-
-  // --- прогресс-окно ---
-  function progressModal(title) {
-    let el;
-    modal({
-      title, size: 'narrow',
-      body: '<div id="pg-text">Готовим…</div><div class="bar-track" style="margin-top:12px"><div class="bar-fill" id="pg-bar" style="width:0%"></div></div>',
-      onMount: (e) => { el = e; },
-    });
-    return {
-      set(text, done, total) {
-        if (!el) return;
-        el.querySelector('#pg-text').textContent = text;
-        el.querySelector('#pg-bar').style.width = total ? `${Math.min(100, (done / total) * 100).toFixed(1)}%` : '0%';
-      },
-      done: () => closeModal(),
-    };
-  }
-
-  const dirBtn = view.querySelector('#exp-dir');
-  if (dirBtn) dirBtn.onclick = async () => {
-    let pg;
-    try {
-      pg = progressModal('Бэкап в папку');
-      const r = await B.exportToDirectory(({ doneBytes, totalBytes, done, total }) =>
-        pg.set(`Файл ${done} из ${total} · ${bytes(doneBytes)} из ${bytes(totalBytes)}`, doneBytes, totalBytes));
-      pg.done();
-      toast(`Готово: записано ${r.written}, без изменений ${r.skipped} (всего ${r.total} файлов)`);
-    } catch (e) {
-      if (pg) pg.done();
-      if (e.name !== 'AbortError') toast('Бэкап не выполнен: ' + e.message, true);
-    }
-  };
-
-  view.querySelector('#exp-zip').onclick = async () => {
-    let pg;
-    try {
-      pg = progressModal('Бэкап в ZIP');
-      const r = await B.exportToZips(({ part, parts, doneBytes, totalBytes }) =>
-        pg.set(`Часть ${part} из ${parts} · ${bytes(doneBytes)} из ${bytes(totalBytes)}`, doneBytes, totalBytes));
-      pg.done();
-      toast(`Готово: ${r.parts} ${r.parts === 1 ? 'архив' : 'архива(ов)'}, ${r.label}`);
-    } catch (e) {
-      if (pg) pg.done();
-      toast('Бэкап не выполнен: ' + e.message, true);
-    }
-  };
-
-  view.querySelector('#exp-json').onclick = () => B.exportDataOnly();
-
-  async function restore(source) {
-    const replace = await confirmDialog(
-      'Заменить текущие данные данными из бэкапа? «Отмена» — данные из бэкапа добавятся к существующим.',
-      { title: 'Восстановление', okText: 'Заменить', danger: true });
-    const pg = progressModal('Восстановление');
-    try {
-      const r = await B.applyBackup(source, {
-        replace,
-        onProgress: ({ done, total }) => pg.set(`Файл ${done} из ${total}`, done, total),
-      });
-      pg.done();
-      toast(`Восстановлено: вилл ${r.villas}, файлов ${r.files}`);
-      refresh();
-    } catch (e) {
-      pg.done();
-      toast('Ошибка восстановления: ' + e.message, true);
-    }
-  }
-
-  const impDir = view.querySelector('#imp-dir');
-  if (impDir) impDir.onclick = async () => {
-    try { await restore(await B.importFromDirectory()); }
-    catch (e) { if (e.name !== 'AbortError') toast('Не удалось открыть папку бэкапа: ' + e.message, true); }
-  };
-
-  const zipInput = view.querySelector('#imp-zip-input');
-  view.querySelector('#imp-zip').onclick = () => zipInput.click();
-  zipInput.onchange = async () => {
-    if (!zipInput.files.length) return;
-    try { await restore(await B.importFromZips(zipInput.files)); }
-    catch (e) { toast('Ошибка чтения архива: ' + e.message, true); }
-    zipInput.value = '';
-  };
-
-  const jsonInput = view.querySelector('#imp-json-input');
-  view.querySelector('#imp-json').onclick = () => jsonInput.click();
-  jsonInput.onchange = async () => {
-    if (!jsonInput.files.length) return;
-    try { await restore(await B.importFromJson(jsonInput.files[0])); }
-    catch (e) { toast('Ошибка чтения файла: ' + e.message, true); }
-    jsonInput.value = '';
-  };
 
   // --- сотрудники (свой сервер) ---
   if (isServer && user && user.role === 'admin') {

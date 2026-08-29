@@ -3,7 +3,7 @@ import * as S from './store.js';
 import { modal, closeModal, field, formData, toast, confirmDialog } from './ui.js';
 import { renderDocs } from './files-ui.js';
 import {
-  esc, STATUS, CURRENCIES, fmtDate, fmtRange, daysBetween, money, num,
+  esc, STATUS, fmtDate, fmtRange, daysBetween, money, num,
   phoneHref, waHref, tgHref, today, addDays,
 } from './util.js';
 
@@ -39,14 +39,13 @@ export function bookingForm(b, { onSaved } = {}) {
       </div>
       <div class="form-section">
         <h4>Деньги</h4>
-        <div class="grid-3">
-          ${field('priceTotal', 'Сумма аренды', { type: 'number', step: '0.01', value: b.priceTotal, placeholder: '0' })}
-          ${field('prepaid', 'Предоплата', { type: 'number', step: '0.01', value: b.prepaid, placeholder: '0' })}
-          ${field('currency', 'Валюта', { options: CURRENCIES, value: b.currency || S.state.settings.currency })}
+        <div class="grid-2">
+          ${field('priceTotal', 'Сумма аренды, Rp', { type: 'number', value: b.priceTotal, placeholder: '0' })}
+          ${field('prepaid', 'Предоплата, Rp', { type: 'number', value: b.prepaid, placeholder: '0' })}
         </div>
         <div class="grid-2" style="margin-top:10px">
           ${field('source', 'Источник', { value: b.source, placeholder: 'Instagram / Airbnb / друзья' })}
-          ${field('cleaningFee', 'Доп. сборы (уборка и пр.)', { type: 'number', step: '0.01', value: b.cleaningFee || '' })}
+          ${field('cleaningFee', 'Доп. сборы, Rp', { type: 'number', value: b.cleaningFee || '' })}
         </div>
       </div>
       ${field('notes', 'Заметки', { type: 'textarea', value: b.notes, rows: 3 })}
@@ -137,7 +136,7 @@ export function bookingCard(id, { onChanged } = {}) {
   const c = S.client(b.clientId);
   const n = S.nights(b);
   const st = STATUS[b.status] || STATUS.booked;
-  const cur = b.currency || 'USD';
+  const cur = 'IDR';
   const total = num(b.priceTotal) + num(b.cleaningFee);
   const due = total - num(b.prepaid);
 

@@ -4,7 +4,7 @@ import { modal, closeModal, field, formData, toast, confirmDialog } from '../ui.
 import { renderDocs } from '../files-ui.js';
 import { bookingForm, bookingCard, plural } from '../booking.js';
 import {
-  esc, money, num, STATUS, fmtRange, fmtDate, phoneHref, waHref, tgHref, sortBy, today,
+  esc, money, moneyShort, num, STATUS, fmtRange, fmtDate, phoneHref, waHref, tgHref, sortBy, today,
 } from '../util.js';
 
 export function renderClientsList(view, actions) {
@@ -41,7 +41,7 @@ export function renderClientsList(view, actions) {
           <td>${esc(c.country || '—')}</td>
           <td>${bs.length}</td>
           <td>${cur ? `${esc(v ? v.name : '')} <span class="file-sub">${fmtRange(cur.dateFrom, cur.dateTo)}</span>` : '—'}</td>
-          <td class="num">${paid ? money(paid, 'USD') : '—'}</td>
+          <td class="num">${paid ? moneyShort(paid, 'IDR') : '—'}</td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
     view.querySelectorAll('tr[data-id]').forEach((tr) => {
@@ -86,9 +86,9 @@ export function renderClientCard(view, actions, id) {
   view.innerHTML = `
     <div class="stat-row" style="margin-bottom:14px">
       <div class="stat"><div class="stat-label">Проживаний</div><div class="stat-value">${bs.length}</div><div class="stat-sub">${nightsTotal} ${plural(nightsTotal, 'ночь', 'ночи', 'ночей')} всего</div></div>
-      <div class="stat"><div class="stat-label">Начислено</div><div class="stat-value">${money(billed, 'USD')}</div></div>
-      <div class="stat"><div class="stat-label">Оплачено</div><div class="stat-value" style="color:var(--acc)">${money(paid, 'USD')}</div></div>
-      <div class="stat"><div class="stat-label">Остаток</div><div class="stat-value" style="color:${billed - paid > 0 ? 'var(--warn)' : 'var(--acc)'}">${money(billed - paid, 'USD')}</div></div>
+      <div class="stat"><div class="stat-label">Начислено</div><div class="stat-value">${moneyShort(billed, 'IDR')}</div></div>
+      <div class="stat"><div class="stat-label">Оплачено</div><div class="stat-value" style="color:var(--acc)">${moneyShort(paid, 'IDR')}</div></div>
+      <div class="stat"><div class="stat-label">Остаток</div><div class="stat-value" style="color:${billed - paid > 0 ? 'var(--warn)' : 'var(--acc)'}">${moneyShort(billed - paid, 'IDR')}</div></div>
     </div>
     <div class="grid-2">
       <div class="panel">
@@ -121,8 +121,8 @@ export function renderClientCard(view, actions, id) {
             <td class="nowrap">${fmtRange(b.dateFrom, b.dateTo)}</td>
             <td>${S.nights(b)}</td>
             <td><span class="badge b-${st.cls}">${st.label}</span></td>
-            <td class="num">${money(num(b.priceTotal) + num(b.cleaningFee), b.currency)}</td>
-            <td class="num">${money(b.prepaid, b.currency)}</td>
+            <td class="num">${money(num(b.priceTotal) + num(b.cleaningFee))}</td>
+            <td class="num">${money(b.prepaid)}</td>
           </tr>`;
         }).join('')}</tbody></table></div>` : '<div class="mute">Проживаний пока нет.</div>'}
     </div>`;

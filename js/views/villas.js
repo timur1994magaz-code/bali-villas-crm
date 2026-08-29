@@ -1,6 +1,6 @@
 // ===== Список вилл =====
 import * as S from '../store.js';
-import { esc, money, num, PERIODS, sortBy } from '../util.js';
+import { esc, money, moneyShort, num, PERIODS, sortBy } from '../util.js';
 import { coverPhoto } from '../files-ui.js';
 import { villaForm } from './villa.js';
 
@@ -70,9 +70,9 @@ export async function renderVillasList(view, actions) {
             ${count ? `<span>🗓️ ${count}</span>` : ''}
           </div>
           <div class="price-row">
-            <div class="price-box price-owner"><span class="mute">Собственнику</span><b>${money(v.ownerPrice, v.currency)}</b><span class="mute">${PERIODS[v.ownerPeriod] || ''}</span></div>
-            <div class="price-box price-ours"><span class="mute">Наша цена</span><b>${v.ourPriceMonth ? money(v.ourPriceMonth, v.currency) : money(v.ourPriceNight, v.currency)}</b><span class="mute">${v.ourPriceMonth ? 'в месяц' : 'за ночь'}</span></div>
-            ${m ? `<div class="price-box price-margin"><span class="mute">Маржа</span><b>${money(Math.round(m.profit), v.currency)}</b><span class="mute">${m.pct.toFixed(0)}%</span></div>` : ''}
+            <div class="price-box price-owner"><span class="mute">Собственнику</span><b>${moneyShort(v.ownerPrice, 'IDR')}</b><span class="mute">${PERIODS[v.ownerPeriod] || ''}</span></div>
+            <div class="price-box price-ours"><span class="mute">Наша цена</span><b>${v.ourPriceMonth ? moneyShort(v.ourPriceMonth, 'IDR') : moneyShort(v.ourPriceNight, 'IDR')}</b><span class="mute">${v.ourPriceMonth ? 'в месяц' : 'за ночь'}</span></div>
+            ${m ? `<div class="price-box price-margin"><span class="mute">Маржа</span><b>${moneyShort(Math.round(m.profit), 'IDR')}</b><span class="mute">${m.pct.toFixed(0)}%</span></div>` : ''}
           </div>
         </div>
       </div>`;
@@ -102,9 +102,9 @@ export async function renderVillasList(view, actions) {
           <td>${esc(v.area || '—')}</td>
           <td>${esc(v.ownerName || v.managerName || '—')}<div class="file-sub">${esc(v.ownerPhone || v.managerPhone || v.villaPhone || '')}</div></td>
           <td style="max-width:260px">${esc((v.terms || v.paymentTerms || '—').slice(0, 90))}${(v.terms || '').length > 90 ? '…' : ''}</td>
-          <td class="num">${money(v.ownerPrice, v.currency)}<div class="file-sub">${PERIODS[v.ownerPeriod] || ''}</div></td>
-          <td class="num">${v.ourPriceMonth ? money(v.ourPriceMonth, v.currency) + '<div class="file-sub">в месяц</div>' : ''}${v.ourPriceNight ? money(v.ourPriceNight, v.currency) + '<div class="file-sub">за ночь</div>' : ''}</td>
-          <td class="num" style="color:var(--warn)">${m ? money(Math.round(m.profit), v.currency) + `<div class="file-sub">${m.pct.toFixed(0)}%</div>` : '—'}</td>
+          <td class="num">${money(v.ownerPrice)}<div class="file-sub">${PERIODS[v.ownerPeriod] || ''}</div></td>
+          <td class="num">${v.ourPriceMonth ? money(v.ourPriceMonth) + '<div class="file-sub">в месяц</div>' : ''}${v.ourPriceNight ? money(v.ourPriceNight) + '<div class="file-sub">за ночь</div>' : ''}</td>
+          <td class="num" style="color:var(--warn)">${m ? money(Math.round(m.profit)) + `<div class="file-sub">${m.pct.toFixed(0)}%</div>` : '—'}</td>
           <td class="num">${count}</td>
         </tr>`;
       }).join('')}</tbody></table>`;

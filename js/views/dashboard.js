@@ -2,7 +2,7 @@
 import * as S from '../store.js';
 import { bookingCard } from '../booking.js';
 import {
-  esc, money, num, STATUS, today, addDays, addMonths, startOfMonth, fmtRange, fmtDateShort,
+  esc, money, moneyShort, num, STATUS, today, addDays, addMonths, startOfMonth, fmtRange, fmtDateShort,
   monthLabel, daysBetween,
 } from '../util.js';
 import { plural } from '../booking.js';
@@ -34,11 +34,11 @@ export function renderDashboard(view) {
         <div class="stat-sub">${busyNow} занято · ${freeNow.length} свободно сейчас</div></div>
       <div class="stat"><div class="stat-label">Занятость · ${monthLabel(t)}</div><div class="stat-value">${occ.pct.toFixed(0)}%</div>
         <div class="stat-sub">${occ.busy} из ${occ.total} вилло-дней</div></div>
-      <div class="stat"><div class="stat-label">Выручка месяца</div><div class="stat-value" style="color:var(--acc)">${money(Math.round(rev), 'USD')}</div>
+      <div class="stat"><div class="stat-label">Выручка месяца</div><div class="stat-value" style="color:var(--acc)">${moneyShort(Math.round(rev), 'IDR')}</div>
         <div class="stat-sub">по броням, пропорционально дням</div></div>
-      <div class="stat"><div class="stat-label">Платежи собственникам</div><div class="stat-value" style="color:var(--txt-dim)">${money(Math.round(ownerCost), 'USD')}</div>
+      <div class="stat"><div class="stat-label">Платежи собственникам</div><div class="stat-value" style="color:var(--txt-dim)">${moneyShort(Math.round(ownerCost), 'IDR')}</div>
         <div class="stat-sub">в месяц по всем виллам</div></div>
-      <div class="stat"><div class="stat-label">Расчётная маржа</div><div class="stat-value" style="color:var(--warn)">${money(Math.round(rev - ownerCost), 'USD')}</div>
+      <div class="stat"><div class="stat-label">Расчётная маржа</div><div class="stat-value" style="color:var(--warn)">${moneyShort(Math.round(rev - ownerCost), 'IDR')}</div>
         <div class="stat-sub">выручка минус аренда</div></div>
     </div>
 
@@ -64,7 +64,7 @@ export function renderDashboard(view) {
             <div><div class="file-name">${esc(c ? c.name : 'без клиента')}</div>
               <div class="file-sub">${esc(v ? v.name : '')} · ${fmtRange(b.dateFrom, b.dateTo)}</div></div>
             <div class="spacer"></div>
-            <b style="color:var(--warn)">${money(due, b.currency)}</b>
+            <b style="color:var(--warn)">${money(due)}</b>
           </div>`;
         }).join('')}</div>` : '<div class="mute">Всё оплачено.</div>'}
       </div>
@@ -77,7 +77,7 @@ export function renderDashboard(view) {
             <div><div class="file-name">${esc(v.name)}</div>
               <div class="file-sub">${esc(v.area || '')}${next ? ` · следующий заезд ${fmtDateShort(next.dateFrom)} (через ${daysBetween(t, next.dateFrom)} ${plural(daysBetween(t, next.dateFrom), 'день', 'дня', 'дней')})` : ' · броней впереди нет'}</div></div>
             <div class="spacer"></div>
-            <span class="badge">${v.ourPriceNight ? money(v.ourPriceNight, v.currency) + '/ночь' : ''}</span>
+            <span class="badge">${v.ourPriceNight ? moneyShort(v.ourPriceNight, 'IDR') + '/ночь' : ''}</span>
           </div>`;
         }).join('')}</div>` : '<div class="mute">Все виллы заняты 🎉</div>'}
       </div>

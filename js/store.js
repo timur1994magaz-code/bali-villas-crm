@@ -14,7 +14,7 @@ export async function load() {
   state.bookings = bookings.sort((a, b) => String(a.dateFrom).localeCompare(String(b.dateFrom)));
   state.clients = clients.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
   state.settings = settings || {};
-  if (!state.settings.currency) state.settings.currency = 'USD';
+  state.settings.currency = 'IDR';   // единственная валюта
   emit();
 }
 
@@ -29,7 +29,7 @@ export function emptyVilla() {
     ownerName: '', ownerPhone: '', ownerWhatsapp: '', ownerEmail: '',
     managerName: '', managerPhone: '', villaPhone: '', villaEmail: '', instagram: '',
     contractFrom: '', contractTo: '', paymentTerms: '', deposit: '', notice: '', terms: '',
-    ownerPrice: '', ownerPeriod: 'month', ourPriceNight: '', ourPriceMonth: '', currency: 'USD',
+    ownerPrice: '', ownerPeriod: 'month', ourPriceNight: '', ourPriceMonth: '', currency: 'IDR',
     utilities: '', mapUrl: '', lat: '', lng: '', wifi: '', notes: '', status: 'active',
     driveUrl: '', driveNote: '',
     createdAt: new Date().toISOString(),
@@ -79,7 +79,7 @@ export function emptyBooking(villaId = '', dateFrom = today(), dateTo = '') {
   return {
     id: db.uid(), villaId, clientId: '',
     dateFrom, dateTo: dateTo || dateFrom,
-    status: 'booked', guests: '', priceTotal: '', prepaid: '', currency: 'USD',
+    status: 'booked', guests: '', priceTotal: '', prepaid: '', currency: 'IDR',
     source: '', notes: '', createdAt: new Date().toISOString(),
   };
 }
@@ -173,16 +173,16 @@ export async function seedDemo() {
     ownerName: 'Pak Wayan', ownerPhone: '+62 812 3456 7890', ownerWhatsapp: '+62 812 3456 7890',
     managerName: 'Kadek (менеджер)', managerPhone: '+62 813 1111 2222',
     contractFrom: ymd(new Date()), contractTo: '', paymentTerms: 'Оплата собственнику раз в 3 месяца вперёд',
-    deposit: '1000 USD', notice: 'Уведомление о расторжении за 60 дней',
+    deposit: '16 млн Rp', notice: 'Уведомление о расторжении за 60 дней',
     terms: 'Долгосрочная субаренда на 12 месяцев. Электричество и вода — на нас, налог PB1 — на собственнике. Разрешена посуточная сдача.',
-    ownerPrice: '2200', ownerPeriod: 'month', ourPriceNight: '190', ourPriceMonth: '3600', currency: 'USD',
+    ownerPrice: '36000000', ownerPeriod: 'month', ourPriceNight: '3100000', ourPriceMonth: '58000000', currency: 'IDR',
     mapUrl: 'https://www.google.com/maps/@-8.6595,115.1379,17z', lat: '-8.6595', lng: '115.1379',
     wifi: 'Biznet 100 Mbps', notes: 'Уборка 3 раза в неделю включена.' };
   const v2 = { ...emptyVilla(), name: 'Villa Sunset Uluwatu', area: 'Улувату (Bingin)', bedrooms: '2', bathrooms: '2', pool: 'Инфинити',
     ownerName: 'Made Sutrisna', ownerPhone: '+62 878 9999 1234', ownerWhatsapp: '+62 878 9999 1234',
-    contractFrom: ymd(new Date()), paymentTerms: 'Полгода вперёд', deposit: '1500 USD',
+    contractFrom: ymd(new Date()), paymentTerms: 'Полгода вперёд', deposit: '24 млн Rp',
     terms: 'Субаренда 24 месяца, продление по той же ставке +7%.',
-    ownerPrice: '1800', ownerPeriod: 'month', ourPriceNight: '160', ourPriceMonth: '3100', currency: 'USD',
+    ownerPrice: '29000000', ownerPeriod: 'month', ourPriceNight: '2600000', ourPriceMonth: '50000000', currency: 'IDR',
     mapUrl: 'https://www.google.com/maps/@-8.8065,115.1141,17z', lat: '-8.8065', lng: '115.1141' };
   await data.putRow('villas', v1); await data.putRow('villas', v2);
 
@@ -194,13 +194,121 @@ export async function seedDemo() {
 
   const t = today();
   await data.putRow('bookings', { ...emptyBooking(v1.id, t, ''), dateFrom: t, dateTo: addD(t, 9),
-    clientId: c1.id, status: 'occupied', guests: '2', priceTotal: '1710', prepaid: '855', currency: 'USD', source: 'Instagram' });
+    clientId: c1.id, status: 'occupied', guests: '2', priceTotal: '27900000', prepaid: '14000000', currency: 'IDR', source: 'Instagram' });
   await data.putRow('bookings', { ...emptyBooking(v1.id), dateFrom: addD(t, 14), dateTo: addD(t, 27),
-    clientId: c2.id, status: 'booked', guests: '4', priceTotal: '2470', prepaid: '700', currency: 'USD', source: 'Airbnb' });
+    clientId: c2.id, status: 'booked', guests: '4', priceTotal: '40300000', prepaid: '11000000', currency: 'IDR', source: 'Airbnb' });
   await data.putRow('bookings', { ...emptyBooking(v2.id), dateFrom: addD(t, 3), dateTo: addD(t, 12),
-    clientId: c2.id, status: 'booked', guests: '2', priceTotal: '1440', currency: 'USD', source: 'Booking.com' });
+    clientId: c2.id, status: 'booked', guests: '2', priceTotal: '23400000', currency: 'IDR', source: 'Booking.com' });
   await data.putRow('bookings', { ...emptyBooking(v2.id), dateFrom: addD(t, 30), dateTo: addD(t, 35),
     status: 'blocked', notes: 'Ремонт бассейна' });
   await load();
 }
 function addD(s, n) { const d = new Date(s); d.setDate(d.getDate() + n); return ymd(d); }
+
+// ===== Подбор виллы под запрос клиента =====
+
+/**
+ * Месячная цена виллы для сравнения с бюджетом.
+ * Если задана только цена за ночь, считаем по 30 ночей и помечаем как приблизительную.
+ */
+export function monthlyPrice(v) {
+  const month = num(v.ourPriceMonth);
+  if (month) return { amount: month, approx: false };
+  const night = num(v.ourPriceNight);
+  if (night) return { amount: night * 30, approx: true };
+  return null;
+}
+
+/**
+ * Занятость виллы в периоде [from, to): свободные и занятые отрезки.
+ * Отдельно считаем, с какой даты вилла свободна до конца периода —
+ * это ответ на «а когда освободится».
+ */
+export function availability(villaId, from, to) {
+  const total = Math.max(0, daysBetween(from, to));
+  const busy = bookingsInRange(from, to, villaId)
+    .map((b) => ({
+      booking: b,
+      start: b.dateFrom > from ? b.dateFrom : from,
+      end: b.dateTo < to ? b.dateTo : to,
+    }))
+    .sort((a, b) => a.start.localeCompare(b.start));
+
+  const free = [];
+  let cursor = from;
+  for (const seg of busy) {
+    if (seg.start > cursor) free.push({ start: cursor, end: seg.start });
+    if (seg.end > cursor) cursor = seg.end;
+  }
+  if (cursor < to) free.push({ start: cursor, end: to });
+
+  const busyDays = busy.reduce((s, x) => s + Math.max(0, daysBetween(x.start, x.end)), 0);
+  const tail = free.length && free[free.length - 1].end === to ? free[free.length - 1] : null;
+
+  return {
+    total,
+    busyDays,
+    freeDays: Math.max(0, total - busyDays),
+    fullyFree: busy.length === 0,
+    busy,
+    free,
+    // с какой даты свободна до конца периода (null, если конец периода занят)
+    freeFrom: tail ? tail.start : null,
+    longestFree: free.reduce((best, f) => {
+      const d = daysBetween(f.start, f.end);
+      return !best || d > best.days ? { ...f, days: d } : best;
+    }, null),
+  };
+}
+
+/**
+ * Подбор под запрос: спальни, бюджет в любой валюте, период.
+ * Возвращает список вилл с ценой в валюте бюджета и раскладом по свободным датам.
+ */
+export function searchVillas({ from, to, bedroomsMin, bedroomsMax, budget,
+  area = '', onlyFree = true, onlyWithinBudget = true } = {}) {
+  const months = from && to ? daysBetween(from, to) / 30.44 : 1;
+
+  const rows = state.villas.map((v) => {
+    const price = monthlyPrice(v);
+    const av = from && to ? availability(v.id, from, to) : null;
+    const beds = num(v.bedrooms);
+    return {
+      villa: v,
+      beds,
+      price,
+      monthTotal: price ? price.amount : null,
+      periodTotal: price ? price.amount * months : null,
+      availability: av,
+      overBudget: budget && price ? price.amount > budget : false,
+    };
+  });
+
+  const filtered = rows.filter((r) => {
+    if (bedroomsMin && (!r.beds || r.beds < bedroomsMin)) return false;
+    if (bedroomsMax && r.beds && r.beds > bedroomsMax) return false;
+    if (area && !String(r.villa.area || '').toLowerCase().includes(area.toLowerCase())) return false;
+    if (onlyWithinBudget && budget && (!r.price || r.overBudget)) return false;
+    if (onlyFree && r.availability && !r.availability.fullyFree) return false;
+    return true;
+  });
+
+  // сначала дешёвые, виллы без цены — в конец
+  filtered.sort((a, b) => {
+    if (a.monthTotal === null) return 1;
+    if (b.monthTotal === null) return -1;
+    return a.monthTotal - b.monthTotal;
+  });
+  return { rows: filtered, all: rows, months };
+}
+
+/** Быстрый расчёт даты выезда через N месяцев. */
+export function addMonthsTo(dateStr, months) {
+  const d = parseYmdLocal(dateStr);
+  d.setMonth(d.getMonth() + months);
+  return ymd(d);
+}
+function parseYmdLocal(str) {
+  const [y, m, d] = String(str).slice(0, 10).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}

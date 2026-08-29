@@ -12,7 +12,7 @@ export const STATUS = {
   blocked:  { label: 'Блок (собственник/ремонт)', cls: 'blocked' },
 };
 
-export const CURRENCIES = ['USD', 'IDR', 'RUB', 'EUR', 'AUD'];
+export const CURRENCIES = ['IDR'];   // работаем только в рупиях
 export const PERIODS = { night: 'за ночь', month: 'в месяц', year: 'в год' };
 
 // ---- даты: работаем со строками YYYY-MM-DD, без таймзонных сюрпризов ----
@@ -68,7 +68,7 @@ export function monthLabel(s) { const d = parseYmd(s); return `${MONTHS[d.getMon
 export function overlaps(a1, a2, b1, b2) { return a1 < b2 && b1 < a2; }
 
 // ---- деньги ----
-export function money(v, cur = 'USD') {
+export function money(v, cur = 'IDR') {
   if (v === '' || v === null || v === undefined || isNaN(Number(v))) return '—';
   const n = Number(v);
   const s = n.toLocaleString('ru-RU', { maximumFractionDigits: n % 1 ? 2 : 0 });
@@ -141,4 +141,48 @@ export function download(blob, name) {
 }
 export function sortBy(arr, key) {
   return [...arr].sort((a, b) => String(a[key] || '').localeCompare(String(b[key] || ''), 'ru'));
+}
+
+// ===== Деньги: разбор ввода и пересчёт валют =====
+
+/**
+ * Понимает то, как суммы пишут на Бали: «30 млн», «30jt», «30m», «30.000.000», «30 000 000».
+ * Возвращает число или null.
+ */
+export function parseAmount(input) {
+  if (input === null || input === undefined) return null;
+  let s = String(input).toLowerCase().trim();
+  if (!s) return null;
+  let mult = 1;
+  if (/(млн|млн\.|миллион\w*|jt|juta|jeti|m)\s*$/.test(s)) {
+    mult = 1e6;
+    s = s.replace(/(млн|млн\.|миллион\w*|jt|juta|jeti|m)\s*$/, '');
+  } else if (/(тыс|тыс\.|k|rb|ribu)\s*$/.test(s)) {
+    mult = 1e3;
+    s = s.replace(/(тыс|тыс\.|k|rb|ribu)\s*$/, '');
+  }
+  s = s.replace(/[^\d.,-]/g, '');
+  // «30.000.000» и «30,000,000» — это разделители тысяч, а не дробь
+  if (/[.,]\d{3}(?:[.,]\d{3})*$/.test(s)) s = s.replace(/[.,]/g, '');
+  else s = s.replace(',', '.');
+  const n = parseFloat(s);
+  if (isNaN(n)) return null;
+  return n * mult;
+}
+
+
+/** Компактная запись больших сумм: 30 млн Rp, $1,2 тыс. */
+export function moneyShort(v, cur = 'IDR') {
+  if (v === '' || v === null || v === undefined) return '—';
+  const n = Number(v);
+  if (!isFinite(n)) return '—';
+  if (n === 0) return money(0, cur);      // ноль — это ноль, а не «нет данных»
+  const sign = { USD: '$', EUR: '€', RUB: '₽', IDR: 'Rp', AUD: 'A$' }[cur] || cur;
+  const put = (num, suffix) => {
+    const s = num.toLocaleString('ru-RU', { maximumFractionDigits: num < 10 ? 1 : 0 });
+    return cur === 'RUB' || cur === 'IDR' ? `${s}${suffix} ${sign}` : `${sign}${s}${suffix}`;
+  };
+  if (Math.abs(n) >= 1e6) return put(n / 1e6, ' млн');
+  if (Math.abs(n) >= 1e4) return put(n / 1e3, ' тыс');
+  return money(n, cur);
 }
