@@ -42,3 +42,35 @@ server {
     gzip_types text/css text/javascript application/javascript application/json image/svg+xml;
     gzip_min_length 1024;
 }
+
+# ─────────────────────────────────────────────────────────────────────
+# Вариант без отдельного домена: CRM на подпути уже существующего сайта,
+# например https://вашсайт.ру/crm/ — сертификат берётся готовый, DNS менять не нужно.
+# Вставьте эти три блока в ваш рабочий server { listen 443 ... } перед location / :
+#
+#     location = /crm { return 308 https://$host/crm/; }
+#
+#     location ^~ /crm/api/events {          # поток живых обновлений, буферизация недопустима
+#         proxy_pass http://127.0.0.1:8080/api/events;
+#         proxy_http_version 1.1;
+#         proxy_set_header Host              $host;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_buffering off; proxy_cache off; gzip off;
+#         chunked_transfer_encoding off;
+#         proxy_read_timeout 3600s;
+#     }
+#
+#     location ^~ /crm/ {
+#         proxy_pass http://127.0.0.1:8080/;  # слэш в конце обязателен: он срезает /crm
+#         proxy_http_version 1.1;
+#         proxy_set_header Host              $host;
+#         proxy_set_header X-Real-IP         $remote_addr;
+#         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         client_max_body_size 512m;
+#         proxy_request_buffering off;
+#         proxy_read_timeout 300s;
+#     }
+#
+# Приложение написано на относительных путях, поэтому под /crm/ работает без правок.
+# ─────────────────────────────────────────────────────────────────────
