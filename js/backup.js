@@ -25,16 +25,16 @@ export async function buildManifest() {
   const meta = [];
   for (const f of records) {
     const path = `files/${f.id}.${extOf(f)}`;
-    const thumbPath = f._thumb ? `thumbs/${f.id}.jpg` : null;
-    // блоб достаётся по требованию: в облаке файл скачивается прямо перед записью,
-    // поэтому память не забивается всем архивом сразу
+    const thumbPath = data.hasThumb(f) ? `thumbs/${f.id}.jpg` : null;
+    // блоб достаётся по требованию: с сервера или из облака файл скачивается
+    // прямо перед записью, поэтому память не забивается всем архивом сразу
     entries.push({ name: path, size: f.size || 0, getBlob: () => data.getBlob(f) });
-    if (f._thumb) entries.push({ name: thumbPath, size: f._thumb.size, getBlob: async () => f._thumb });
+    if (thumbPath) entries.push({ name: thumbPath, size: f._thumb ? f._thumb.size : 0, getBlob: () => data.getThumbBlob(f) });
     meta.push({
       id: f.id, ownerType: f.ownerType, ownerId: f.ownerId, kind: f.kind,
       name: f.name, mime: f.mime, size: f.size, caption: f.caption || '',
       w: f.w || null, h: f.h || null, optimized: !!f.optimized,
-      createdAt: f.createdAt, sort: f.sort, path, thumbPath: f._thumb ? thumbPath : null,
+      createdAt: f.createdAt, sort: f.sort, path, thumbPath,
     });
   }
   const manifest = {

@@ -19,8 +19,10 @@ export async function renderSettings(view, actions) {
   const est = await data.storageInfo();
   const st = await data.fileStats();
   const isCloud = data.isCloud();
+  const isServer = data.isServer();
+  const isRemote = data.isRemote();
   const cfg = cloudConfig();
-  const user = isCloud ? await cloud.currentUser().catch(() => null) : null;
+  const user = isRemote ? await data.currentUser().catch(() => null) : null;
   const free = est.quota ? est.quota - est.usage : 0;
   const pct = est.quota ? Math.min(100, (est.usage / est.quota) * 100) : 0;
   const quality = localStorage.getItem('photoQuality') || 'original';
@@ -38,8 +40,9 @@ export async function renderSettings(view, actions) {
         <div style="margin-top:12px"><button class="btn btn-primary btn-sm" id="save-set">Сохранить</button></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><h3>💾 Хранилище</h3>${isCloud ? '<div class="spacer"></div><span class="cloud-badge">☁️ общая база</span>' : ''}</div>
-        ${isCloud ? `<div class="hint" style="margin-bottom:12px">Файлы лежат в хранилище Supabase: ${bytes(est.usage)}. На бесплатном тарифе доступен 1 ГБ, на Pro — 100 ГБ.</div>`
+        <div class="panel-head"><h3>💾 Хранилище</h3>${isRemote ? `<div class="spacer"></div><span class="cloud-badge">${isServer ? '🖥️ ваш сервер' : '☁️ общая база'}</span>` : ''}</div>
+        ${isServer ? `<div class="hint" style="margin-bottom:12px">Файлы лежат на вашем сервере: ${bytes(est.usage)}. Предел — только место на диске сервера.</div>`
+        : isCloud ? `<div class="hint" style="margin-bottom:12px">Файлы лежат в хранилище Supabase: ${bytes(est.usage)}. На бесплатном тарифе доступен 1 ГБ, на Pro — 100 ГБ.</div>`
         : `<div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%;background:${pct > 85 ? 'var(--danger)' : pct > 60 ? 'var(--warn)' : 'var(--acc)'}"></div></div>
         <div class="hint" style="margin:6px 0 12px">Занято ${bytes(est.usage)} из ~${bytes(est.quota)}${free ? ` · свободно ${bytes(free)}` : ''}</div>`}
         <dl class="kv">
@@ -53,11 +56,22 @@ export async function renderSettings(view, actions) {
     </div>
 
     <div class="panel">
-      <div class="panel-head"><h3>👥 Общая база и доступ сотрудников</h3>
+      <div class="panel-head"><h3>👥 Совместная работа</h3>
         <div class="spacer"></div>
-        <span class="badge ${isCloud ? 'b-occupied' : 'b-off'}">${isCloud ? 'подключена' : 'выключена'}</span>
+        <span class="badge ${isRemote ? 'b-occupied' : 'b-off'}">${isServer ? 'ваш сервер' : isCloud ? 'Supabase' : 'выключена'}</span>
       </div>
-      ${isCloud ? `
+      ${isServer ? `
+        <dl class="kv">
+          <dt>Где данные</dt><dd>На вашем сервере: база, фото и документы</dd>
+          <dt>Вы вошли как</dt><dd>${esc(user ? user.email : '—')}${user && user.role === 'admin' ? ' · владелец' : ' · сотрудник'}</dd>
+        </dl>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="migrate">⬆︎ Перенести локальную базу этого браузера на сервер</button>
+        </div>
+        <div class="hint" style="margin-top:12px">
+          Сотрудников заводите ниже, в разделе «Сотрудники». Изменения появляются у всех сразу, без обновления страницы.
+        </div>`
+      : isCloud ? `
         <dl class="kv">
           <dt>Проект Supabase</dt><dd class="mono">${esc(cfg.url)}</dd>
           <dt>Вы вошли как</dt><dd>${esc(user ? user.email : '—')}</dd>
@@ -74,8 +88,10 @@ export async function renderSettings(view, actions) {
       : `
         <div class="hint" style="margin-bottom:12px">
           Сейчас база живёт только в этом браузере, поэтому доступ сотруднику выдать нельзя.
-          Подключите проект Supabase — данные, фото и документы переедут в общее хранилище, а вход будет по почте и паролю.
-          Пошаговая инструкция — в файле <code>SETUP-SUPABASE.md</code> в репозитории.
+          Вариант первый — поставить приложение на свой сервер (инструкция <code>DEPLOY.md</code>), тогда всё будет у вас.
+          Вариант второй —
+          подключить Supabase: данные, фото и документы переедут в общее хранилище, а вход будет по почте и паролю
+          (инструкция <code>SETUP-SUPABASE.md</code>).
         </div>
         ${field('supabaseUrl', 'Project URL', { value: cfg.url, placeholder: 'https://xxxxxxxx.supabase.co' })}
         <div style="margin-top:10px">${field('supabaseKey', 'Anon public key', { value: cfg.key, placeholder: 'eyJhbGciOi…' })}</div>
@@ -83,6 +99,18 @@ export async function renderSettings(view, actions) {
           <button class="btn btn-primary" id="cloud-on">Подключить общую базу</button>
         </div>`}
     </div>
+
+    ${isServer && user && user.role === 'admin' ? `
+    <div class="panel">
+      <div class="panel-head"><h3>🧑‍💼 Сотрудники</h3>
+        <div class="spacer"></div>
+        <button class="btn btn-sm btn-primary" id="user-add">+ Добавить сотрудника</button>
+      </div>
+      <div id="user-list" class="file-list"><div class="mute">Загружаем…</div></div>
+      <div class="hint" style="margin-top:12px">
+        Сотрудник входит по своей почте и паролю на этом же адресе. Удаление сотрудника сразу закрывает ему доступ.
+      </div>
+    </div>` : ''}
 
     <div class="panel">
       <div class="panel-head"><h3>📦 Бэкап и перенос</h3></div>
@@ -228,6 +256,70 @@ export async function renderSettings(view, actions) {
     jsonInput.value = '';
   };
 
+  // --- сотрудники (свой сервер) ---
+  if (isServer && user && user.role === 'admin') {
+    const listBox = view.querySelector('#user-list');
+    const drawUsers = async () => {
+      try {
+        const users = await data.selfhost.listUsers();
+        listBox.innerHTML = users.map((u) => `
+          <div class="file-row">
+            <span class="file-ico">${u.role === 'admin' ? '👑' : '🧑‍💼'}</span>
+            <div>
+              <div class="file-name">${esc(u.email)}</div>
+              <div class="file-sub">${u.role === 'admin' ? 'владелец — полный доступ' : 'сотрудник'} · с ${String(u.created_at || '').slice(0, 10)}</div>
+            </div>
+            <div class="spacer"></div>
+            <button class="btn btn-sm" data-pw="${u.id}">Сменить пароль</button>
+            ${u.id === user.id ? '' : `<button class="btn btn-sm btn-danger" data-del-user="${u.id}" data-email="${esc(u.email)}">Удалить</button>`}
+          </div>`).join('');
+        listBox.querySelectorAll('[data-pw]').forEach((b) => {
+          b.onclick = async () => {
+            const pw = prompt('Новый пароль (не короче 8 символов):');
+            if (!pw) return;
+            try { await data.selfhost.setUserPassword(b.dataset.pw, pw); toast('Пароль изменён'); }
+            catch (e) { toast(e.message, true); }
+          };
+        });
+        listBox.querySelectorAll('[data-del-user]').forEach((b) => {
+          b.onclick = async () => {
+            if (!await confirmDialog(`Удалить сотрудника ${b.dataset.email}? Доступ закроется сразу.`)) return;
+            try { await data.selfhost.deleteUser(b.dataset.delUser); toast('Сотрудник удалён'); drawUsers(); }
+            catch (e) { toast(e.message, true); }
+          };
+        });
+      } catch (e) {
+        listBox.innerHTML = `<div class="mute">Не удалось загрузить список: ${esc(e.message)}</div>`;
+      }
+    };
+    drawUsers();
+    view.querySelector('#user-add').onclick = () => {
+      modal({
+        title: 'Новый сотрудник', size: 'narrow',
+        body: `
+          ${field('email', 'Почта', { type: 'email', placeholder: 'manager@example.com' })}
+          <div style="margin-top:10px">${field('password', 'Пароль', { value: '', placeholder: 'не короче 8 символов', hint: 'Передайте его сотруднику любым удобным способом' })}</div>
+          <div style="margin-top:10px">${field('role', 'Права', { options: [
+            { value: 'manager', label: 'Сотрудник — полный доступ к виллам, броням и клиентам' },
+            { value: 'admin', label: 'Владелец — плюс управление сотрудниками' }], value: 'manager' })}</div>`,
+        footer: '<button class="btn" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Создать</button>',
+        onMount(el) {
+          el.querySelector('[name=password]').value = Math.random().toString(36).slice(2, 6) + '-' + Math.random().toString(36).slice(2, 6);
+          el.querySelector('[data-cancel]').onclick = closeModal;
+          el.querySelector('[data-save]').onclick = async () => {
+            const d = formData(el);
+            try {
+              await data.selfhost.createUser(d.email, d.password, d.role);
+              closeModal();
+              toast(`Сотрудник ${d.email} создан`);
+              drawUsers();
+            } catch (e) { toast(e.message, true); }
+          };
+        },
+      });
+    };
+  }
+
   // --- общая база ---
   const onBtn = view.querySelector('#cloud-on');
   if (onBtn) onBtn.onclick = async () => {
@@ -265,12 +357,12 @@ export async function renderSettings(view, actions) {
     const c = await migrate.localCounts();
     if (!c.villas && !c.clients && !c.files) return toast('В локальной базе этого браузера ничего нет', true);
     const ok = await confirmDialog(
-      `Перенести в общую базу: вилл ${c.villas}, клиентов ${c.clients}, броней ${c.bookings}, файлов ${c.files} (${bytes(c.bytes)})? Записи с теми же номерами будут перезаписаны.`,
-      { title: 'Перенос в общую базу', okText: 'Перенести', danger: false });
+      `Перенести ${isServer ? 'на сервер' : 'в общую базу'}: вилл ${c.villas}, клиентов ${c.clients}, броней ${c.bookings}, файлов ${c.files} (${bytes(c.bytes)})? Записи с теми же номерами будут перезаписаны.`,
+      { title: isServer ? 'Перенос на сервер' : 'Перенос в общую базу', okText: 'Перенести', danger: false });
     if (!ok) return;
-    const pg = progressModal('Перенос в общую базу');
+    const pg = progressModal(isServer ? 'Перенос на сервер' : 'Перенос в общую базу');
     try {
-      const r = await migrate.localToCloud(({ step, totalSteps, label }) => pg.set(`${step} из ${totalSteps} · ${label}`, step, totalSteps));
+      const r = await migrate.localToRemote(({ step, totalSteps, label }) => pg.set(`${step} из ${totalSteps} · ${label}`, step, totalSteps));
       pg.done();
       toast(`Перенесено: вилл ${r.villas}, клиентов ${r.clients}, файлов ${r.uploaded}${r.failed ? `, не удалось ${r.failed}` : ''}`);
       await S.load();

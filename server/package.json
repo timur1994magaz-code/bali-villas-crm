@@ -1,0 +1,12 @@
+{
+  "name": "bali-villas-crm-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Сервер CRM субаренды вилл: SQLite + файлы на диске, без внешних зависимостей",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.js",
+    "user": "node cli.js"
+  }
+}

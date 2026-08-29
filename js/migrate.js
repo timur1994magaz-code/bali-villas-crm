@@ -1,6 +1,6 @@
-// ===== Перенос локальной базы в общую (Supabase) =====
+// ===== Перенос локальной базы браузера в общую (свой сервер или Supabase) =====
 import * as db from './db.js';
-import * as cloud from './cloud.js';
+import * as data from './data.js';
 
 export async function localCounts() {
   const [villas, bookings, clients] = await Promise.all([
@@ -14,7 +14,7 @@ export async function localCounts() {
   };
 }
 
-export async function localToCloud(onProgress = () => {}) {
+export async function localToRemote(onProgress = () => {}) {
   const [villas, bookings, clients, settings] = await Promise.all([
     db.all('villas'), db.all('bookings'), db.all('clients'), db.all('settings'),
   ]);
@@ -25,15 +25,15 @@ export async function localToCloud(onProgress = () => {}) {
   let step = 0;
   const tick = (label) => { step++; onProgress({ step, totalSteps, label }); };
 
-  for (const v of villas) { await cloud.putRow('villas', v); tick(`Вилла: ${v.name || v.id}`); }
-  for (const c of clients) { await cloud.putRow('clients', c); tick(`Клиент: ${c.name || c.id}`); }
-  for (const b of bookings) { await cloud.putRow('bookings', b); tick('Бронь'); }
-  for (const s of settings) { await cloud.putRow('settings', s); tick('Настройка'); }
+  for (const v of villas) { await data.putRow('villas', v); tick(`Вилла: ${v.name || v.id}`); }
+  for (const c of clients) { await data.putRow('clients', c); tick(`Клиент: ${c.name || c.id}`); }
+  for (const b of bookings) { await data.putRow('bookings', b); tick('Бронь'); }
+  for (const s of settings) { await data.putRow('settings', s); tick('Настройка'); }
 
   let uploaded = 0, failed = 0;
   for (const f of files) {
     try {
-      await cloud.uploadFile({
+      await data.restoreFile({
         id: f.id, ownerType: f.ownerType, ownerId: f.ownerId, kind: f.kind,
         name: f.name, mime: f.mime, size: f.size, caption: f.caption || '',
         w: f.w || null, h: f.h || null, optimized: !!f.optimized, sort: f.sort,
@@ -47,3 +47,5 @@ export async function localToCloud(onProgress = () => {}) {
   }
   return { villas: villas.length, bookings: bookings.length, clients: clients.length, uploaded, failed };
 }
+
+export const localToCloud = localToRemote;

@@ -1,0 +1,44 @@
+# Bali Villas CRM — пример настройки nginx.
+# Положите в /etc/nginx/sites-available/bali-crm, замените crm.ваш-домен.ру,
+# затем: ln -s /etc/nginx/sites-available/bali-crm /etc/nginx/sites-enabled/
+#        nginx -t && systemctl reload nginx
+#        certbot --nginx -d crm.ваш-домен.ру      (бесплатный сертификат)
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name crm.ваш-домен.ру;
+
+    # certbot сам добавит сюда перенаправление на https
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # загрузка фотографий в исходном качестве
+        client_max_body_size 512m;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # живое обновление у второго сотрудника: поток событий нельзя буферизовать
+    location /api/events {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        chunked_transfer_encoding off;
+        proxy_read_timeout 3600s;
+    }
+
+    gzip on;
+    gzip_types text/css text/javascript application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+}

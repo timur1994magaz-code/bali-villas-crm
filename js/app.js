@@ -69,13 +69,14 @@ function showLogin(message = '') {
     <form class="login-card" id="login-form">
       <div class="login-logo">🌴</div>
       <h2>Bali Villas CRM</h2>
-      <p class="hint">Вход в общую базу</p>
+      <p class="hint">${data.isServer() ? 'Вход в систему' : 'Вход в общую базу'}</p>
       ${message ? `<div class="login-error">${esc(message)}</div>` : ''}
       <label class="field"><span>Почта</span><input type="email" name="email" autocomplete="username" required></label>
       <label class="field"><span>Пароль</span><input type="password" name="password" autocomplete="current-password" required></label>
       <button class="btn btn-primary" type="submit" id="login-btn">Войти</button>
-      <button class="btn btn-ghost btn-sm" type="button" id="forgot">Забыли пароль?</button>
-      <button class="btn btn-ghost btn-sm" type="button" id="local-mode">Отключить общую базу и работать локально</button>
+      ${data.canResetPassword() ? '<button class="btn btn-ghost btn-sm" type="button" id="forgot">Забыли пароль?</button>' : ''}
+      ${data.isServer() ? '<p class="hint">Пароль забыли? Его сбросит владелец в разделе «Сотрудники».</p>'
+        : '<button class="btn btn-ghost btn-sm" type="button" id="local-mode">Отключить общую базу и работать локально</button>'}
     </form>`;
 
   box.querySelector('#login-form').onsubmit = async (e) => {
@@ -84,7 +85,7 @@ function showLogin(message = '') {
     btn.disabled = true; btn.textContent = 'Входим…';
     try {
       const fd = new FormData(e.target);
-      await cloud.signIn(fd.get('email'), fd.get('password'));
+      await data.signIn(fd.get('email'), fd.get('password'));
       box.hidden = true;
       document.getElementById('app').style.display = '';
       await boot();
@@ -92,13 +93,15 @@ function showLogin(message = '') {
       showLogin(err.message);
     }
   };
-  box.querySelector('#forgot').onclick = async () => {
+  const forgot = box.querySelector('#forgot');
+  if (forgot) forgot.onclick = async () => {
     const email = box.querySelector('[name=email]').value.trim();
     if (!email) return showLogin('Введите почту, на неё придёт ссылка для смены пароля');
     try { await cloud.sendPasswordReset(email); showLogin('Письмо со ссылкой отправлено на ' + email); }
     catch (err) { showLogin(err.message); }
   };
-  box.querySelector('#local-mode').onclick = () => {
+  const localBtn = box.querySelector('#local-mode');
+  if (localBtn) localBtn.onclick = () => {
     // сбрасываем подключение, иначе приложение снова упрётся в недоступный сервер
     clearCloudConfig();
     cloud.resetClient();
@@ -112,7 +115,7 @@ let reloadTimer = null;
 async function startRealtime() {
   if (unsubscribe) { unsubscribe(); unsubscribe = null; }
   try {
-    unsubscribe = await cloud.subscribe(() => {
+    unsubscribe = await data.subscribe(() => {
       clearTimeout(reloadTimer);
       reloadTimer = setTimeout(async () => {
         const modalOpen = !document.getElementById('modal-root').hidden;
@@ -128,13 +131,15 @@ async function startRealtime() {
 /* ---------- Подвал боковой панели ---------- */
 async function updateFooter() {
   const note = document.getElementById('storage-note');
-  if (data.isCloud()) {
-    note.innerHTML = `☁️ Общая база${currentUser ? `<br>${esc(currentUser.email)}` : ''}
+  if (data.isRemote()) {
+    const icon = data.isServer() ? '🖥️' : '☁️';
+    const title = data.isServer() ? 'Ваш сервер' : 'Общая база';
+    note.innerHTML = `${icon} ${title}${currentUser ? `<br>${esc(currentUser.email)}` : ''}
       <br><a href="#" id="signout-link">Выйти</a>`;
     const link = note.querySelector('#signout-link');
     if (link) link.onclick = async (e) => {
       e.preventDefault();
-      await cloud.signOut();
+      await data.signOut();
       location.reload();
     };
     return;
@@ -159,12 +164,13 @@ document.getElementById('btn-quick-booking').onclick = () => {
 };
 
 async function boot() {
-  if (data.isCloud()) {
+  await data.init();                     // свой сервер? общая база? локально?
+  if (data.isRemote()) {
     try {
-      currentUser = await cloud.currentUser();
+      currentUser = await data.currentUser();
     } catch (e) {
       console.error(e);
-      showLogin('Не удалось связаться с общей базой: ' + e.message);
+      showLogin(`Не удалось связаться с ${data.isServer() ? 'сервером' : 'общей базой'}: ${e.message}`);
       return;
     }
     if (!currentUser) return showLogin();
@@ -174,10 +180,10 @@ async function boot() {
     await S.load();
   } catch (e) {
     console.error(e);
-    if (data.isCloud()) return showLogin('Ошибка загрузки данных: ' + e.message);
+    if (data.isRemote()) return showLogin('Ошибка загрузки данных: ' + e.message);
     toast('Не удалось открыть локальную базу: ' + e.message, true);
   }
-  if (!data.isCloud() && navigator.storage && navigator.storage.persist) {
+  if (!data.isRemote() && navigator.storage && navigator.storage.persist) {
     try { await navigator.storage.persist(); } catch (e) { void e; }
   }
   await updateFooter();

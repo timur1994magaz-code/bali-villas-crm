@@ -3,3 +3,9 @@ Thumbs.db
 node_modules/
 *.log
 .playwright-mcp/
+
+# данные сервера при локальном запуске
+data/
+*.db
+*.db-wal
+*.db-shm

@@ -22,7 +22,7 @@ function photoQuality() { return localStorage.getItem('photoQuality') || 'origin
 
 /** Предупреждение, если браузеру осталось мало места (только локальный режим). */
 async function checkQuota(incoming = 0) {
-  if (data.isCloud()) return true;
+  if (data.isRemote()) return true;
   const { usage, quota } = await data.storageInfo();
   if (!quota) return true;
   const free = quota - usage;
@@ -152,7 +152,7 @@ export async function renderPhotos(box, ownerType, ownerId, opts = {}) {
   };
 
   // Догоняем превью для фото, загруженных до появления этой функции (локальный режим)
-  if (!data.isCloud()) {
+  if (!data.isRemote()) {
     const missing = files.filter((f) => !f._thumb);
     if (missing.length) {
       prog.textContent = `Готовим превью для ${missing.length} фото…`;

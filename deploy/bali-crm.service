@@ -1,0 +1,38 @@
+[Unit]
+Description=Bali Villas CRM
+Documentation=https://github.com/timur1994magaz-code/bali-villas-crm
+After=network.target
+
+[Service]
+Type=simple
+User=crm
+Group=crm
+WorkingDirectory=/opt/bali-crm/server
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=CRM_PORT=8080
+Environment=CRM_HOST=127.0.0.1
+Environment=CRM_DATA_DIR=/var/lib/bali-crm
+Environment=CRM_APP_DIR=/opt/bali-crm
+Environment=CRM_SECURE_COOKIES=1
+Environment=CRM_MAX_UPLOAD=512
+
+# ограничения: сервису доступен только его каталог данных
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/bali-crm
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bali-crm
+
+[Install]
+WantedBy=multi-user.target
