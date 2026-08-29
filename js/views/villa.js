@@ -433,12 +433,12 @@ export function villaForm(v) {
 
       <div class="form-section"><h4>Цены</h4>
         <div class="grid-2">
-          ${field('ownerPrice', 'Цена собственника, Rp', { type: 'number', value: v.ownerPrice, placeholder: '36000000' })}
+          ${field('ownerPrice', 'Цена собственника, Rp', { type: 'money', value: v.ownerPrice, placeholder: '36 млн' })}
           ${field('ownerPeriod', 'Период', { options: Object.entries(PERIODS).map(([value, label]) => ({ value, label })), value: v.ownerPeriod })}
         </div>
         <div class="grid-2" style="margin-top:10px">
-          ${field('ourPriceNight', 'Наша цена за ночь, Rp', { type: 'number', value: v.ourPriceNight, placeholder: '3100000' })}
-          ${field('ourPriceMonth', 'Наша цена в месяц, Rp', { type: 'number', value: v.ourPriceMonth, placeholder: '58000000' })}
+          ${field('ourPriceNight', 'Наша цена за ночь, Rp', { type: 'money', value: v.ourPriceNight, placeholder: '3,1 млн' })}
+          ${field('ourPriceMonth', 'Наша цена в месяц, Rp', { type: 'money', value: v.ourPriceMonth, placeholder: '58 млн' })}
         </div>
         <div class="hint" id="margin-hint" style="margin-top:8px"></div>
       </div>

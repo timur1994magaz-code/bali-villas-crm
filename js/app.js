@@ -162,6 +162,13 @@ async function updateFooter() {
     : '💾 Данные хранятся локально в браузере. Делайте бэкап в «Настройках».';
 }
 
+// колесо мыши над числовым полем меняло значение незаметно для человека —
+// снимаем фокус, чтобы прокрутка страницы не правила суммы
+document.addEventListener('wheel', () => {
+  const el = document.activeElement;
+  if (el && el.tagName === 'INPUT' && el.type === 'number') el.blur();
+}, { passive: true });
+
 window.addEventListener('hashchange', route);
 window.addEventListener('data-changed', () => { route(); updateFooter(); });
 S.onChange(() => updateFooter());

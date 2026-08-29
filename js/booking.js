@@ -40,12 +40,13 @@ export function bookingForm(b, { onSaved } = {}) {
       <div class="form-section">
         <h4>Деньги</h4>
         <div class="grid-2">
-          ${field('priceTotal', 'Сумма аренды, Rp', { type: 'number', value: b.priceTotal, placeholder: '0' })}
-          ${field('prepaid', 'Предоплата, Rp', { type: 'number', value: b.prepaid, placeholder: '0' })}
+          ${field('priceTotal', 'Сумма аренды, Rp', { type: 'money', value: b.priceTotal, placeholder: '30 млн' })}
+          ${field('prepaid', 'Предоплата, Rp', { type: 'money', value: b.prepaid, placeholder: '3 млн' })}
         </div>
+        <div id="money-info" class="hint" style="margin-top:8px"></div>
         <div class="grid-2" style="margin-top:10px">
           ${field('source', 'Источник', { value: b.source, placeholder: 'Instagram / Airbnb / друзья' })}
-          ${field('cleaningFee', 'Доп. сборы, Rp', { type: 'number', value: b.cleaningFee || '' })}
+          ${field('cleaningFee', 'Доп. сборы, Rp', { type: 'money', value: b.cleaningFee || '' })}
         </div>
       </div>
       ${field('notes', 'Заметки', { type: 'textarea', value: b.notes, rows: 3 })}
@@ -64,6 +65,19 @@ export function bookingForm(b, { onSaved } = {}) {
           : 'Дата выезда должна быть позже даты заезда';
         const test = { ...b, ...d };
         const cf = S.conflicts(test);
+        // остаток считаем на глазах, чтобы пустая сумма аренды не превращалась в минус
+        const rent = num(d.priceTotal) + num(d.cleaningFee);
+        const paid = num(d.prepaid);
+        const mbox = el.querySelector('#money-info');
+        if (!rent && paid) {
+          mbox.innerHTML = `<span style="color:var(--warn)">⚠ Предоплата ${money(paid)} есть, а сумма аренды не заполнена — в карточке клиента остаток уйдёт в минус. Впишите сумму аренды.</span>`;
+        } else if (rent) {
+          const left = rent - paid;
+          mbox.innerHTML = `Итого ${money(rent)} − предоплата ${money(paid)} = <b style="color:${left > 0 ? 'var(--warn)' : 'var(--acc)'}">остаток ${money(left)}</b>`;
+        } else {
+          mbox.textContent = '';
+        }
+
         const cbox = el.querySelector('#conflict');
         cbox.innerHTML = cf.length
           ? `<span style="color:var(--danger)">⚠ Пересечение с бронью: ${cf.map((c) => fmtRange(c.dateFrom, c.dateTo)).join(', ')}</span>`
@@ -174,7 +188,9 @@ export function bookingCard(id, { onChanged } = {}) {
             ${b.cleaningFee ? `<dt>Доп. сборы</dt><dd>${money(b.cleaningFee, cur)}</dd>` : ''}
             <dt>Итого</dt><dd><b>${money(total, cur)}</b></dd>
             <dt>Предоплата</dt><dd>${money(b.prepaid, cur)}</dd>
-            <dt>Остаток к оплате</dt><dd style="color:${due > 0 ? 'var(--warn)' : 'var(--acc)'}"><b>${money(due, cur)}</b></dd>
+            <dt>${due < 0 ? 'Переплата' : 'Остаток к оплате'}</dt>
+            <dd style="color:${due > 0 ? 'var(--warn)' : 'var(--acc)'}"><b>${money(Math.abs(due), cur)}</b>
+            ${total === 0 && num(b.prepaid) ? '<div class="file-sub" style="color:var(--warn)">не указана сумма аренды — нажмите «Редактировать»</div>' : ''}</dd>
             ${n ? `<dt>За ночь</dt><dd>${money(total / n, cur)}</dd>` : ''}
           </dl>
         </div>

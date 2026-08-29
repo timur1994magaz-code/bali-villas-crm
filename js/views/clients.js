@@ -88,7 +88,11 @@ export function renderClientCard(view, actions, id) {
       <div class="stat"><div class="stat-label">Проживаний</div><div class="stat-value">${bs.length}</div><div class="stat-sub">${nightsTotal} ${plural(nightsTotal, 'ночь', 'ночи', 'ночей')} всего</div></div>
       <div class="stat"><div class="stat-label">Начислено</div><div class="stat-value">${moneyShort(billed, 'IDR')}</div></div>
       <div class="stat"><div class="stat-label">Оплачено</div><div class="stat-value" style="color:var(--acc)">${moneyShort(paid, 'IDR')}</div></div>
-      <div class="stat"><div class="stat-label">Остаток</div><div class="stat-value" style="color:${billed - paid > 0 ? 'var(--warn)' : 'var(--acc)'}">${moneyShort(billed - paid, 'IDR')}</div></div>
+      <div class="stat"><div class="stat-label">${billed - paid < 0 ? 'Переплата' : 'Остаток'}</div>
+        <div class="stat-value" style="color:${billed - paid > 0 ? 'var(--warn)' : 'var(--acc)'}">${moneyShort(Math.abs(billed - paid), 'IDR')}</div>
+        ${billed === 0 && paid > 0
+          ? '<div class="stat-sub" style="color:var(--warn)">в брони не указана сумма аренды</div>'
+          : billed - paid < 0 ? '<div class="stat-sub">оплачено больше начисленного</div>' : ''}</div>
     </div>
     <div class="grid-2">
       <div class="panel">
@@ -121,7 +125,9 @@ export function renderClientCard(view, actions, id) {
             <td class="nowrap">${fmtRange(b.dateFrom, b.dateTo)}</td>
             <td>${S.nights(b)}</td>
             <td><span class="badge b-${st.cls}">${st.label}</span></td>
-            <td class="num">${money(num(b.priceTotal) + num(b.cleaningFee))}</td>
+            <td class="num">${num(b.priceTotal) + num(b.cleaningFee)
+              ? money(num(b.priceTotal) + num(b.cleaningFee))
+              : '<span style="color:var(--warn)" title="Откройте бронь и впишите сумму аренды">не указана</span>'}</td>
             <td class="num">${money(b.prepaid)}</td>
           </tr>`;
         }).join('')}</tbody></table></div>` : '<div class="mute">Проживаний пока нет.</div>'}

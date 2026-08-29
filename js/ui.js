@@ -1,5 +1,5 @@
 // ===== UI-примитивы: модалки, тосты, лайтбокс, подтверждения =====
-import { esc } from './util.js';
+import { esc, parseAmount, money } from './util.js';
 
 const root = () => document.getElementById('modal-root');
 const stack = [];
@@ -19,6 +19,7 @@ export function modal({ title, body, footer = '', size = '', onMount, onClose })
   el.querySelector('[data-close]').onclick = () => closeModal();
   r.onclick = (e) => { if (e.target === r) closeModal(); };
   document.addEventListener('keydown', escHandler);
+  enhanceMoneyInputs(el);
   if (onMount) onMount(el);
   const focusable = el.querySelector('input,select,textarea');
   if (focusable) setTimeout(() => focusable.focus(), 30);
@@ -102,7 +103,13 @@ document.addEventListener('DOMContentLoaded', () => {
 export function field(name, label, opts = {}) {
   const { type = 'text', value = '', placeholder = '', options, rows, required, step, hint } = opts;
   let input;
-  if (options) {
+  if (type === 'money') {
+    // не «число»: колесо мыши над числовым полем незаметно меняет сумму,
+    // а так ещё и можно писать «30 млн» или «30jt»
+    const shown = value === '' || value === null || value === undefined
+      ? '' : Number(value).toLocaleString('ru-RU').replace(/\u00a0/g, ' ');
+    input = `<input type="text" inputmode="numeric" data-money name="${name}" value="${esc(shown)}" placeholder="${esc(placeholder)}">`;
+  } else if (options) {
     input = `<select name="${name}">${options.map((o) => {
       const v = typeof o === 'string' ? o : o.value;
       const l = typeof o === 'string' ? o : o.label;
@@ -118,7 +125,24 @@ export function field(name, label, opts = {}) {
 export function formData(el) {
   const out = {};
   el.querySelectorAll('input[name],select[name],textarea[name]').forEach((i) => {
-    out[i.name] = i.type === 'checkbox' ? i.checked : i.value.trim();
+    if (i.type === 'checkbox') { out[i.name] = i.checked; return; }
+    if (i.hasAttribute('data-money')) {
+      const n = parseAmount(i.value);
+      out[i.name] = n === null ? '' : String(n);
+      return;
+    }
+    out[i.name] = i.value.trim();
   });
   return out;
+}
+
+/** Аккуратный вид сумм при потере фокуса: 30 млн → 30 000 000. */
+export function enhanceMoneyInputs(root) {
+  root.querySelectorAll('input[data-money]').forEach((i) => {
+    i.addEventListener('blur', () => {
+      const n = parseAmount(i.value);
+      i.value = n === null ? '' : n.toLocaleString('ru-RU').replace(/\u00a0/g, ' ');
+    });
+  });
+  void money;
 }
