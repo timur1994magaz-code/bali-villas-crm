@@ -1,6 +1,7 @@
 // ===== Загрузка/показ файлов: фотогалерея и документы =====
 import * as data from './data.js';
 import * as db from './db.js';
+import * as S from './store.js';
 import { esc, bytes, download, fmtDateShort } from './util.js';
 import { toast, confirmDialog, openLightbox } from './ui.js';
 import { makeThumb, prepareOriginal, isHeic, supportsHeic } from './images.js';
@@ -18,7 +19,11 @@ function fileIcon(mime, name) {
   return '📎';
 }
 
-function photoQuality() { return localStorage.getItem('photoQuality') || 'original'; }
+/** Общая для всех настройка: чтобы сотрудник не грузил оригиналы, когда решено экономить место. */
+function photoQuality() {
+  const shared = S.state.settings && S.state.settings.photoQuality;
+  return shared || localStorage.getItem('photoQuality') || 'original';
+}
 
 /** Предупреждение, если браузеру осталось мало места (только локальный режим). */
 async function checkQuota(incoming = 0) {

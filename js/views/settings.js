@@ -25,7 +25,7 @@ export async function renderSettings(view, actions) {
   const user = isRemote ? await data.currentUser().catch(() => null) : null;
   const free = est.quota ? est.quota - est.usage : 0;
   const pct = est.quota ? Math.min(100, (est.usage / est.quota) * 100) : 0;
-  const quality = localStorage.getItem('photoQuality') || 'original';
+  const quality = S.state.settings.photoQuality || localStorage.getItem('photoQuality') || 'original';
   const avgPhoto = st.photos ? st.size / st.photos : 0;
 
   view.innerHTML = `
@@ -35,7 +35,7 @@ export async function renderSettings(view, actions) {
         ${field('currency', 'Валюта по умолчанию', { options: CURRENCIES, value: S.state.settings.currency })}
         <div style="margin-top:12px">
           ${field('photoQuality', 'Качество хранения фото', { options: QUALITY, value: quality,
-            hint: 'Влияет только на новые загрузки. Оригинал — как просили, без потери качества; 2560 px экономит место в разы при том же виде на экране.' })}
+            hint: 'Влияет на новые загрузки у всех сотрудников. Оригинал — без потери качества; 2560 px экономит место в разы при том же виде на экране. Оригиналы можно хранить на Google Диске — ссылка задаётся в карточке виллы.' })}
         </div>
         <div style="margin-top:12px"><button class="btn btn-primary btn-sm" id="save-set">Сохранить</button></div>
       </div>
@@ -160,8 +160,9 @@ export async function renderSettings(view, actions) {
   view.querySelector('#save-set').onclick = async () => {
     const d = formData(view);
     await S.setSetting('currency', d.currency);
-    localStorage.setItem('photoQuality', d.photoQuality);
-    toast('Сохранено');
+    await S.setSetting('photoQuality', d.photoQuality);
+    localStorage.setItem('photoQuality', d.photoQuality);   // подстраховка для локального режима
+    toast(isRemote ? 'Сохранено для всех сотрудников' : 'Сохранено');
   };
 
   // --- прогресс-окно ---

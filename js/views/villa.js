@@ -48,7 +48,14 @@ export async function renderVillaCard(view, actions, id) {
 
   function drawTab() {
     if (active === 'overview') return drawOverview();
-    if (active === 'photos') { body.innerHTML = '<div class="panel" id="ph"></div>'; return renderPhotos(body.querySelector('#ph'), 'villa', v.id); }
+    if (active === 'photos') {
+      body.innerHTML = `${driveBanner()}<div class="panel" id="ph"></div>`;
+      const setBtn = body.querySelector('#drive-set');
+      if (setBtn) setBtn.onclick = askDrive;
+      const editBtn = body.querySelector('#drive-edit');
+      if (editBtn) editBtn.onclick = askDrive;
+      return renderPhotos(body.querySelector('#ph'), 'villa', v.id);
+    }
     if (active === 'location') return drawLocation();
     if (active === 'calendar') return drawCalendar();
     if (active === 'bookings') return drawBookings();
@@ -113,6 +120,9 @@ export async function renderVillaCard(view, actions, id) {
             <dt>Адрес</dt><dd>${esc(v.address || '—')}</dd>
             <dt>Спальни / санузлы</dt><dd>${esc(v.bedrooms || '—')} / ${esc(v.bathrooms || '—')}</dd>
             <dt>Бассейн</dt><dd>${esc(v.pool || '—')}</dd>
+            <dt>Оригиналы фото</dt><dd>${v.driveUrl
+              ? `<a href="${esc(v.driveUrl)}" target="_blank" rel="noopener">Папка на Google Диске ↗</a>${v.driveNote ? `<div class="file-sub">${esc(v.driveNote)}</div>` : ''}`
+              : '<span class="mute">ссылка не задана</span>'}</dd>
           </dl>
         </div>
         <div class="panel">
@@ -124,6 +134,56 @@ export async function renderVillaCard(view, actions, id) {
     if (ob) ob.onclick = () => bookingCard(ob.dataset.openB, { onChanged: rerender });
   }
   function linkPhone(p) { return p ? `<a href="${phoneHref(p)}">${esc(p)}</a>` : '—'; }
+
+  function driveBanner() {
+    if (!v.driveUrl) {
+      return `<div class="panel drive-panel">
+        <span class="drive-ico">🗂️</span>
+        <div>
+          <b>Оригиналы фото на Google Диске</b>
+          <div class="file-sub">В CRM снимки хранятся в рабочем размере. Добавьте ссылку на папку — оригиналы всегда будут под рукой.</div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn-sm" id="drive-set">Добавить ссылку</button>
+      </div>`;
+    }
+    return `<div class="panel drive-panel drive-on">
+      <span class="drive-ico">🗂️</span>
+      <div>
+        <b>Оригиналы на Google Диске</b>
+        <div class="file-sub">${esc(v.driveNote || 'Полноразмерные снимки этой виллы')}</div>
+      </div>
+      <div class="spacer"></div>
+      <a class="btn btn-sm btn-primary" href="${esc(v.driveUrl)}" target="_blank" rel="noopener">Открыть папку ↗</a>
+      <button class="btn btn-sm" id="drive-edit">✎</button>
+    </div>`;
+  }
+
+  function askDrive() {
+    modal({
+      title: 'Папка с оригиналами', size: 'narrow',
+      body: `
+        ${field('driveUrl', 'Ссылка на папку Google Диска', { value: v.driveUrl, placeholder: 'https://drive.google.com/drive/folders/…' })}
+        <div style="margin-top:10px">${field('driveNote', 'Примечание', { value: v.driveNote, placeholder: 'Съёмка март 2026' })}</div>
+        <div class="hint" style="margin-top:10px">Откройте папку на Google Диске → «Поделиться» → «Доступ по ссылке» → скопируйте ссылку сюда. Иначе сотрудник увидит запрос доступа.</div>`,
+      footer: `${v.driveUrl ? '<button class="btn btn-danger left" data-clear>Убрать ссылку</button>' : ''}
+        <button class="btn" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
+      onMount(el) {
+        el.querySelector('[data-cancel]').onclick = closeModal;
+        const clr = el.querySelector('[data-clear]');
+        if (clr) clr.onclick = async () => {
+          await S.saveVilla({ ...v, driveUrl: '', driveNote: '' });
+          closeModal(); toast('Ссылка убрана'); rerender();
+        };
+        el.querySelector('[data-save]').onclick = async () => {
+          const d = formData(el);
+          if (d.driveUrl && !/^https?:\/\//i.test(d.driveUrl)) return toast('Ссылка должна начинаться с https://', true);
+          await S.saveVilla({ ...v, driveUrl: d.driveUrl, driveNote: d.driveNote });
+          closeModal(); toast('Ссылка сохранена'); rerender();
+        };
+      },
+    });
+  }
 
   // ---------- Локация ----------
   function drawLocation() {
@@ -332,6 +392,12 @@ export function villaForm(v) {
           ${field('ourPriceMonth', 'Наша цена в месяц', { type: 'number', step: '0.01', value: v.ourPriceMonth, placeholder: '3600' })}
         </div>
         <div class="hint" id="margin-hint" style="margin-top:8px"></div>
+      </div>
+
+      <div class="form-section"><h4>Оригиналы фото</h4>
+        ${field('driveUrl', 'Ссылка на папку Google Диска', { value: v.driveUrl, placeholder: 'https://drive.google.com/drive/folders/…',
+          hint: 'В CRM фото хранятся в рабочем размере, а полные оригиналы удобно держать на Диске. Кнопка на вкладку «Фото» появится автоматически.' })}
+        <div style="margin-top:10px">${field('driveNote', 'Примечание к папке', { value: v.driveNote, placeholder: 'Съёмка март 2026, фотограф Ari' })}</div>
       </div>
 
       <div class="form-section"><h4>Локация</h4>
