@@ -86,10 +86,16 @@ fi
 say "Резервные копии по расписанию"
 chmod +x "$APP_DIR/deploy/backup.sh"
 # база — каждую ночь (весит килобайты), полный архив с фотографиями — раз в неделю
-# и только если на диске есть запас; существующие задания crontab сохраняются
-( crontab -l 2>/dev/null | grep -v 'bali-crm/deploy/backup.sh' ; \
-  echo "0 3 * * * $APP_DIR/deploy/backup.sh >> /var/log/bali-crm-backup.log 2>&1" ; \
-  echo "30 3 * * 0 $APP_DIR/deploy/backup.sh --full >> /var/log/bali-crm-backup.log 2>&1" ) | crontab -
+# и только если на диске есть запас.
+# Чужие задания сохраняются: пишем во временный файл и не даём grep оборвать скрипт,
+# когда совпадений нет (иначе пустой ввод затёр бы весь crontab).
+CRON_TMP=$(mktemp)
+crontab -l 2>/dev/null | grep -v 'bali-crm/deploy/backup.sh' > "$CRON_TMP" || true
+echo "0 3 * * * $APP_DIR/deploy/backup.sh >> /var/log/bali-crm-backup.log 2>&1" >> "$CRON_TMP"
+echo "30 3 * * 0 $APP_DIR/deploy/backup.sh --full >> /var/log/bali-crm-backup.log 2>&1" >> "$CRON_TMP"
+crontab "$CRON_TMP"
+rm -f "$CRON_TMP"
+echo "    заданий в crontab: $(crontab -l | grep -c . )"
 
 cat <<FINAL
 
