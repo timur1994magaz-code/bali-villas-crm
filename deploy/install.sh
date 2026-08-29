@@ -64,13 +64,23 @@ ln -sf /etc/nginx/sites-available/bali-crm /etc/nginx/sites-enabled/bali-crm
 nginx -t && systemctl reload nginx
 
 say "Получаем сертификат (https)"
-if ! command -v certbot >/dev/null 2>&1; then apt-get install -y certbot python3-certbot-nginx; fi
-if certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$ADMIN_EMAIL" --redirect; then
-  SCHEME=https
-else
-  warn "сертификат получить не удалось — проверьте, что домен $DOMAIN указывает на этот сервер (A-запись)"
-  warn "потом повторите:  certbot --nginx -d $DOMAIN"
+if [ "${CRM_SKIP_CERT:-0}" = "1" ]; then
+  warn "пропущено по запросу (CRM_SKIP_CERT=1)"
+  warn "когда A-запись домена появится, выполните:  certbot --nginx -d $DOMAIN --redirect"
   SCHEME=http
+elif ! getent hosts "$DOMAIN" >/dev/null 2>&1; then
+  warn "домен $DOMAIN пока никуда не указывает — сертификат отложен"
+  warn "добавьте A-запись на этот сервер, затем:  certbot --nginx -d $DOMAIN --redirect"
+  SCHEME=http
+else
+  if ! command -v certbot >/dev/null 2>&1; then apt-get install -y certbot python3-certbot-nginx; fi
+  if certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$ADMIN_EMAIL" --redirect; then
+    SCHEME=https
+  else
+    warn "сертификат получить не удалось — проверьте A-запись домена $DOMAIN"
+    warn "потом повторите:  certbot --nginx -d $DOMAIN"
+    SCHEME=http
+  fi
 fi
 
 say "Резервные копии по расписанию"
