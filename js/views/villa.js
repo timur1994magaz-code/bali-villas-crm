@@ -1,7 +1,8 @@
 // ===== Карточка виллы: обзор, фото, локация, календарь, брони, документы =====
 import * as S from '../store.js';
 import { modal, closeModal, field, formData, toast, confirmDialog } from '../ui.js';
-import { renderPhotos, renderDocs } from '../files-ui.js';
+import { renderPhotos, renderDocs, uploadPhotos } from '../files-ui.js';
+import * as data from '../data.js';
 import { bookingForm, bookingCard, plural } from '../booking.js';
 import {
   esc, money, num, CURRENCIES, PERIODS, STATUS, fmtDate, fmtDateShort, fmtRange,
@@ -17,9 +18,14 @@ export async function renderVillaCard(view, actions, id) {
   actions.innerHTML = `
     <a class="btn btn-sm" href="#/villas">← К списку</a>
     <button class="btn btn-sm" id="v-edit">✎ Редактировать</button>
+    <button class="btn btn-sm" id="v-photos">📸 Фото</button>
     <button class="btn btn-sm btn-primary" id="v-book">+ Бронь</button>
     <button class="btn btn-sm btn-danger" id="v-del">Удалить</button>`;
   actions.querySelector('#v-edit').onclick = () => villaForm(v);
+  actions.querySelector('#v-photos').onclick = () => {
+    sessionStorage.setItem('villaTab', 'photos');
+    renderVillaCard(view, actions, id);
+  };
   actions.querySelector('#v-book').onclick = () => bookingForm(S.emptyBooking(v.id, today(), addDays(today(), 7)), { onSaved: () => rerender() });
   actions.querySelector('#v-del').onclick = async () => {
     if (await confirmDialog(`Удалить виллу «${v.name}» со всеми фото, документами и бронями?`)) {
@@ -82,6 +88,8 @@ export async function renderVillaCard(view, actions, id) {
         <div>${esc((S.client(nowB.clientId) || {}).name || 'Без клиента')} · ${fmtRange(nowB.dateFrom, nowB.dateTo)}</div>
       </div>` : ''}
 
+      <div class="panel" id="ov-photos"></div>
+
       <div class="grid-2">
         <div class="panel">
           <div class="panel-head"><h3>📞 Контакты виллы</h3></div>
@@ -117,7 +125,6 @@ export async function renderVillaCard(view, actions, id) {
           <div class="panel-head"><h3>🏠 Объект</h3></div>
           <dl class="kv">
             <dt>Район</dt><dd>${esc(v.area || '—')}</dd>
-            <dt>Адрес</dt><dd>${esc(v.address || '—')}</dd>
             <dt>Спальни / санузлы</dt><dd>${esc(v.bedrooms || '—')} / ${esc(v.bathrooms || '—')}</dd>
             <dt>Бассейн</dt><dd>${esc(v.pool || '—')}</dd>
             <dt>Оригиналы фото</dt><dd>${v.driveUrl
@@ -132,6 +139,49 @@ export async function renderVillaCard(view, actions, id) {
       </div>`;
     const ob = body.querySelector('[data-open-b]');
     if (ob) ob.onclick = () => bookingCard(ob.dataset.openB, { onChanged: rerender });
+    drawPhotoStrip();
+  }
+
+  /** Лента фото в обзоре: видно сразу, грузится здесь же. */
+  async function drawPhotoStrip() {
+    const box = body.querySelector('#ov-photos');
+    if (!box) return;
+    const photos = await data.listFiles('villa', v.id, 'photo');
+    box.innerHTML = `
+      <div class="panel-head">
+        <h3>📸 Фотографии${photos.length ? ` <span class="mute">(${photos.length})</span>` : ''}</h3>
+        <div class="spacer"></div>
+        ${photos.length ? '<button class="btn btn-sm" data-all>Все фото и подписи</button>' : ''}
+        <button class="btn btn-sm btn-primary" data-add>+ Добавить фото</button>
+      </div>
+      <input type="file" accept="image/*" multiple hidden data-input>
+      <div class="hint" data-prog style="margin-bottom:8px"></div>
+      ${photos.length
+        ? `<div class="photo-strip">${photos.slice(0, 12).map((f, i) => `
+            <div class="strip-item" data-i="${i}" title="${esc(f.name)}">
+              <img src="${esc(f.thumbSrc)}" alt="${esc(f.caption || f.name)}" loading="lazy">
+            </div>`).join('')}
+          ${photos.length > 12 ? `<div class="strip-more" data-all>+${photos.length - 12}</div>` : ''}</div>`
+        : `<div class="dropzone" data-dz>Перетащите фотографии виллы сюда или нажмите — они появятся у всех сотрудников</div>`}`;
+
+    const input = box.querySelector('[data-input]');
+    const prog = box.querySelector('[data-prog]');
+    const openTab = () => { sessionStorage.setItem('villaTab', 'photos'); rerender(); };
+    const doUpload = async (files) => {
+      const n = await uploadPhotos('villa', v.id, files, { onProgress: (t) => { prog.textContent = t; } });
+      if (n) drawPhotoStrip();
+    };
+    box.querySelector('[data-add]').onclick = () => input.click();
+    input.onchange = () => { if (input.files.length) doUpload(input.files); input.value = ''; };
+    box.querySelectorAll('[data-all]').forEach((b) => { b.onclick = openTab; });
+    const dz = box.querySelector('[data-dz]');
+    if (dz) {
+      dz.onclick = () => input.click();
+      dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
+      dz.ondragleave = () => dz.classList.remove('over');
+      dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('over'); doUpload(e.dataTransfer.files); };
+    }
+    box.querySelectorAll('.strip-item').forEach((el) => { el.onclick = openTab; });
   }
   function linkPhone(p) { return p ? `<a href="${phoneHref(p)}">${esc(p)}</a>` : '—'; }
 
@@ -194,32 +244,30 @@ export async function renderVillaCard(view, actions, id) {
           ${coords ? `<a class="btn btn-sm" href="${mapLinkUrl(coords.lat, coords.lng)}" target="_blank" rel="noopener">Открыть в Google Maps</a>` : ''}
           ${coords ? `<a class="btn btn-sm" href="https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}" target="_blank" rel="noopener">Маршрут</a>` : ''}
         </div>
-        <div class="grid-2" style="margin-bottom:12px">
-          ${field('mapUrl', 'Ссылка Google Maps или координаты', { value: v.mapUrl, placeholder: 'https://maps.app.goo.gl/… или -8.6595, 115.1379' })}
-          <div class="grid-2">
-            ${field('lat', 'Широта (lat)', { value: v.lat, placeholder: '-8.6595' })}
-            ${field('lng', 'Долгота (lng)', { value: v.lng, placeholder: '115.1379' })}
-          </div>
+        ${field('mapUrl', 'Ссылка на Google Maps', { value: v.mapUrl, placeholder: 'https://maps.app.goo.gl/… или https://www.google.com/maps/@-8.6595,115.1379,17z' })}
+        <div class="row" style="margin:12px 0 14px">
+          <button class="btn btn-sm btn-primary" id="save-map">Сохранить</button>
+          <button class="btn btn-sm btn-ghost" id="coords-toggle">Ввести координаты вручную</button>
         </div>
-        <div class="row" style="margin-bottom:14px">
-          <button class="btn btn-sm" id="parse-map">📌 Достать координаты из ссылки</button>
-          <button class="btn btn-sm btn-primary" id="save-map">Сохранить локацию</button>
-          <span class="hint">Короткие ссылки maps.app.goo.gl координат не содержат — откройте их в браузере и скопируйте полный адрес, либо вставьте координаты вручную.</span>
+        <div id="coords-box" hidden style="margin-bottom:14px">
+          <div class="grid-2">
+            ${field('lat', 'Широта', { value: v.lat, placeholder: '-8.6595' })}
+            ${field('lng', 'Долгота', { value: v.lng, placeholder: '115.1379' })}
+          </div>
+          <div class="hint" style="margin-top:8px">
+            Нужно только для коротких ссылок вида maps.app.goo.gl — в них координат нет.
+            Откройте такую ссылку в браузере, скопируйте адрес из строки и вставьте выше, либо впишите координаты сюда.
+          </div>
         </div>
         <div class="map-box">
           ${coords
             ? `<iframe src="${mapEmbedUrl(coords.lat, coords.lng)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Карта"></iframe>`
             : '<div class="map-empty">Карта появится, когда будут заданы координаты.</div>'}
         </div>
-        ${v.address ? `<div class="hint" style="margin-top:10px">🏠 ${esc(v.address)}</div>` : ''}
       </div>`;
-    body.querySelector('#parse-map').onclick = () => {
-      const d = formData(body);
-      const c = parseCoords(d.mapUrl);
-      if (!c) return toast('Не удалось найти координаты в ссылке', true);
-      body.querySelector('[name=lat]').value = c.lat;
-      body.querySelector('[name=lng]').value = c.lng;
-      toast(`Координаты: ${c.lat}, ${c.lng}`);
+    body.querySelector('#coords-toggle').onclick = () => {
+      const box = body.querySelector('#coords-box');
+      box.hidden = !box.hidden;
     };
     body.querySelector('#save-map').onclick = async () => {
       const d = formData(body);
@@ -337,7 +385,9 @@ export function villaForm(v) {
         ${field('name', 'Название виллы', { value: v.name, placeholder: 'Villa Cinta 1', required: true })}
         ${field('area', 'Район', { value: v.area, placeholder: 'Чангу / Убуд / Улувату' })}
       </div>
-      ${field('address', 'Адрес', { value: v.address, placeholder: 'Jl. Pantai Berawa No.12, Canggu' })}
+      ${field('mapUrl', 'Ссылка на Google Maps', { value: v.mapUrl,
+        placeholder: 'https://maps.app.goo.gl/… или https://www.google.com/maps/@-8.6595,115.1379,17z',
+        hint: 'Координаты вытащим из ссылки сами — карта появится на вкладке «Локация».' })}
       <div class="grid-4">
         ${field('bedrooms', 'Спальни', { value: v.bedrooms, placeholder: '3' })}
         ${field('bathrooms', 'Санузлы', { value: v.bathrooms, placeholder: '3' })}
@@ -400,15 +450,8 @@ export function villaForm(v) {
         <div style="margin-top:10px">${field('driveNote', 'Примечание к папке', { value: v.driveNote, placeholder: 'Съёмка март 2026, фотограф Ari' })}</div>
       </div>
 
-      <div class="form-section"><h4>Локация</h4>
-        ${field('mapUrl', 'Ссылка Google Maps / координаты', { value: v.mapUrl, placeholder: 'https://www.google.com/maps/@-8.6595,115.1379,17z' })}
-        <div class="grid-2" style="margin-top:10px">
-          ${field('lat', 'Широта', { value: v.lat })}
-          ${field('lng', 'Долгота', { value: v.lng })}
-        </div>
-      </div>
-
-      ${field('notes', 'Заметки', { type: 'textarea', value: v.notes, rows: 3 })}`,
+      ${field('notes', 'Заметки', { type: 'textarea', value: v.notes, rows: 3 })}
+      <div class="hint" style="margin-top:6px">📸 Фотографии добавляются в карточке виллы — кнопка «Добавить фото» в обзоре или вкладка «Фото».</div>`,
     footer: `<button class="btn" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
     onMount(el) {
       const upd = () => {

@@ -58,9 +58,16 @@ export function renderClientCard(view, actions, id) {
   actions.innerHTML = `
     <a class="btn btn-sm" href="#/clients">← К списку</a>
     <button class="btn btn-sm" id="c-edit">✎ Редактировать</button>
+    <button class="btn btn-sm" id="c-doc">📎 Паспорт / договор</button>
     <button class="btn btn-sm btn-primary" id="c-book">+ Бронь клиенту</button>
     <button class="btn btn-sm btn-danger" id="c-del">Удалить</button>`;
   actions.querySelector('#c-edit').onclick = () => clientForm(c);
+  actions.querySelector('#c-doc').onclick = () => {
+    const input = view.querySelector('#c-docs [data-input]');
+    if (input) input.click();
+    const panel = view.querySelector('#c-docs');
+    if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
   actions.querySelector('#c-book').onclick = () => {
     const b = S.emptyBooking(S.state.villas[0] ? S.state.villas[0].id : '', today());
     bookingForm({ ...b, clientId: c.id }, { onSaved: () => renderClientCard(view, actions, id) });
@@ -119,7 +126,8 @@ export function renderClientCard(view, actions, id) {
           </tr>`;
         }).join('')}</tbody></table></div>` : '<div class="mute">Проживаний пока нет.</div>'}
     </div>`;
-  renderDocs(view.querySelector('#c-docs'), 'client', c.id, { title: '📁 Документы (договор, паспорт, виза…)' });
+  renderDocs(view.querySelector('#c-docs'), 'client', c.id,
+    { title: '📁 Документы: договор, паспорт, виза' });
   view.querySelectorAll('tr[data-b]').forEach((tr) => {
     tr.onclick = () => bookingCard(tr.dataset.b, { onChanged: () => renderClientCard(view, actions, id) });
   });
@@ -145,7 +153,8 @@ export function clientForm(c) {
         ${field('instagram', 'Instagram', { value: c.instagram })}
       </div>
       ${field('source', 'Источник', { value: c.source, placeholder: 'Instagram / Airbnb / рекомендация' })}
-      ${field('notes', 'Заметки', { type: 'textarea', value: c.notes, rows: 3 })}`,
+      ${field('notes', 'Заметки', { type: 'textarea', value: c.notes, rows: 3 })}
+      <div class="hint" style="margin-top:6px">📎 Паспорт и договор загружаются в карточке клиента — кнопка «Паспорт / договор» вверху.</div>`,
     footer: '<button class="btn" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>',
     onMount(el) {
       el.querySelector('[data-cancel]').onclick = closeModal;

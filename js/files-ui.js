@@ -41,6 +41,37 @@ async function checkQuota(incoming = 0) {
   return true;
 }
 
+/**
+ * Загрузка фотографий: подготовка по общей настройке качества, превью, сохранение.
+ * Используется и на вкладке «Фото», и прямо в обзоре виллы.
+ */
+export async function uploadPhotos(ownerType, ownerId, fileList, { onProgress } = {}) {
+  const arr = [...fileList].filter((f) => f.type.startsWith('image/') || isHeic(f));
+  if (!arr.length) { toast('Выберите изображения', true); return 0; }
+  if (!await checkQuota(arr.reduce((s, f) => s + f.size, 0))) return 0;
+  if (arr.some(isHeic) && !supportsHeic()) {
+    toast('HEIC-файлы этот браузер не показывает. На iPhone: Настройки → Камера → Форматы → «Наиболее совместимый»', true);
+  }
+  const qMode = photoQuality();
+  let done = 0;
+  let sort = Date.now();
+  for (const raw of arr) {
+    if (onProgress) onProgress(`Загружаем ${done + 1} из ${arr.length}: ${raw.name}…`);
+    try {
+      const { file, optimized } = await prepareOriginal(raw, qMode);
+      const { thumb, w, h } = await makeThumb(file);
+      await data.saveUpload(ownerType, ownerId, file, 'photo', '', { thumb, w, h, optimized, sort: sort++ });
+      done++;
+    } catch (e) {
+      console.error(e);
+      toast(`Не удалось загрузить ${raw.name}: ${e.name === 'QuotaExceededError' ? 'нет места' : e.message}`, true);
+    }
+  }
+  if (onProgress) onProgress('');
+  if (done) toast(`Загружено фото: ${done}`);
+  return done;
+}
+
 /** Фотогалерея с загрузкой (drag&drop + выбор файлов). */
 export async function renderPhotos(box, ownerType, ownerId, opts = {}) {
   const files = await data.listFiles(ownerType, ownerId, 'photo');
@@ -86,28 +117,7 @@ export async function renderPhotos(box, ownerType, ownerId, opts = {}) {
   const reload = () => renderPhotos(box, ownerType, ownerId, opts).then(() => opts.onChange && opts.onChange());
 
   const upload = async (fileList) => {
-    const arr = [...fileList].filter((f) => f.type.startsWith('image/') || isHeic(f));
-    if (!arr.length) return toast('Выберите изображения', true);
-    if (!await checkQuota(arr.reduce((s, f) => s + f.size, 0))) return;
-    if (arr.some(isHeic) && !supportsHeic()) {
-      toast('HEIC-файлы этот браузер не показывает. На iPhone: Настройки → Камера → Форматы → «Наиболее совместимый»', true);
-    }
-    let done = 0;
-    let sort = Date.now();
-    for (const raw of arr) {
-      prog.textContent = `Загружаем ${done + 1} из ${arr.length}: ${raw.name}…`;
-      try {
-        const { file, optimized } = await prepareOriginal(raw, qMode);
-        const { thumb, w, h } = await makeThumb(file);
-        await data.saveUpload(ownerType, ownerId, file, 'photo', '', { thumb, w, h, optimized, sort: sort++ });
-        done++;
-      } catch (e) {
-        console.error(e);
-        toast(`Не удалось загрузить ${raw.name}: ${e.name === 'QuotaExceededError' ? 'нет места в браузере' : e.message}`, true);
-      }
-    }
-    prog.textContent = '';
-    if (done) toast(`Загружено фото: ${done}`);
+    await uploadPhotos(ownerType, ownerId, fileList, { onProgress: (t) => { prog.textContent = t; } });
     reload();
   };
 
