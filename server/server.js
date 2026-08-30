@@ -7,6 +7,7 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import * as store from './lib/store.js';
 import * as auth from './lib/auth.js';
+import { resolveMapLink } from './lib/maps.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = process.env.CRM_APP_DIR || path.join(HERE, '..');
@@ -191,6 +192,20 @@ async function handleAuthed(req, res, url, method, user) {
     clients.add(res);
     req.on('close', () => clients.delete(res));
     return undefined;
+  }
+
+  /* ---- карты ---- */
+  // короткие ссылки maps.app.goo.gl не содержат координат, а браузеру их не развернуть:
+  // ходит сервер и достаёт точку
+  if (p === '/api/resolve-map' && method === 'GET') {
+    const link = q.get('url');
+    if (!link) return fail(res, 400, 'Не передана ссылка');
+    try {
+      const r = await resolveMapLink(link);
+      return ok(res, r);
+    } catch (e) {
+      return fail(res, 422, e.message || 'Не удалось разобрать ссылку');
+    }
   }
 
   /* ---- записи ---- */

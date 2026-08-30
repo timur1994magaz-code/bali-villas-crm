@@ -48,6 +48,13 @@ export async function subscribe(cb) {
 /** Восстановление пароля есть только у Supabase; на своём сервере пароль меняет владелец. */
 export const canResetPassword = () => isCloud();
 
+/** Умеет ли текущий режим разворачивать короткие ссылки карт (это делает наш сервер). */
+export const canResolveMaps = () => isServer();
+export async function resolveMapLink(url) {
+  if (!isServer()) throw new Error('Разворачивать короткие ссылки умеет только свой сервер');
+  return selfhost.resolveMapLink(url);
+}
+
 /* ---------- Записи ---------- */
 export async function loadAll() {
   if (isServer()) return selfhost.loadAll();

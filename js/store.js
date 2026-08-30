@@ -31,7 +31,7 @@ export function emptyVilla() {
     contractFrom: '', contractTo: '', paymentTerms: '', deposit: '', notice: '', terms: '',
     ownerPrice: '', ownerPeriod: 'month', ourPriceNight: '', ourPriceMonth: '', currency: 'IDR',
     utilities: '', mapUrl: '', lat: '', lng: '', wifi: '', notes: '', status: 'active',
-    driveUrl: '', driveNote: '',
+    driveUrl: '', driveNote: '', mapPlace: '',
     createdAt: new Date().toISOString(),
   };
 }

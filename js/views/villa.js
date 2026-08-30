@@ -238,6 +238,8 @@ export async function renderVillaCard(view, actions, id) {
   // ---------- Локация ----------
   function drawLocation() {
     const coords = v.lat && v.lng ? { lat: Number(v.lat), lng: Number(v.lng) } : parseCoords(v.mapUrl);
+    const hasLink = !!String(v.mapUrl || '').trim();
+
     body.innerHTML = `
       <div class="panel">
         <div class="panel-head"><h3>📍 Локация и Google-точка</h3><div class="spacer"></div>
@@ -246,36 +248,86 @@ export async function renderVillaCard(view, actions, id) {
         </div>
         ${field('mapUrl', 'Ссылка на Google Maps', { value: v.mapUrl, placeholder: 'https://maps.app.goo.gl/… или https://www.google.com/maps/@-8.6595,115.1379,17z' })}
         <div class="row" style="margin:12px 0 14px">
-          <button class="btn btn-sm btn-primary" id="save-map">Сохранить</button>
+          <button class="btn btn-sm btn-primary" id="save-map">Сохранить и показать карту</button>
           <button class="btn btn-sm btn-ghost" id="coords-toggle">Ввести координаты вручную</button>
+          <span class="hint" id="map-status"></span>
         </div>
         <div id="coords-box" hidden style="margin-bottom:14px">
           <div class="grid-2">
             ${field('lat', 'Широта', { value: v.lat, placeholder: '-8.6595' })}
             ${field('lng', 'Долгота', { value: v.lng, placeholder: '115.1379' })}
           </div>
-          <div class="hint" style="margin-top:8px">
-            Нужно только для коротких ссылок вида maps.app.goo.gl — в них координат нет.
-            Откройте такую ссылку в браузере, скопируйте адрес из строки и вставьте выше, либо впишите координаты сюда.
-          </div>
+          <div class="hint" style="margin-top:8px">Обычно не нужно: точку определяем по ссылке автоматически.</div>
         </div>
-        <div class="map-box">
+        <div class="map-box" id="map-box">
           ${coords
             ? `<iframe src="${mapEmbedUrl(coords.lat, coords.lng)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Карта"></iframe>`
-            : '<div class="map-empty">Карта появится, когда будут заданы координаты.</div>'}
+            : `<div class="map-empty">
+                 ${hasLink
+                   ? 'Определяем точку по ссылке…'
+                   : 'Вставьте ссылку на Google Maps — карта появится здесь.'}
+               </div>`}
         </div>
+        ${coords && v.mapPlace ? `<div class="hint" style="margin-top:10px">📌 ${esc(v.mapPlace)}</div>` : ''}
       </div>`;
+
+    const status = body.querySelector('#map-status');
     body.querySelector('#coords-toggle').onclick = () => {
       const box = body.querySelector('#coords-box');
       box.hidden = !box.hidden;
     };
+
+    /** Пытаемся получить точку: сначала из самой ссылки, потом силами сервера. */
+    async function resolve(link, { quiet = false } = {}) {
+      const local = parseCoords(link);
+      if (local) return { ...local, place: '' };
+      if (!data.canResolveMaps()) {
+        if (!quiet) toast('Короткую ссылку разворачивает только свой сервер — впишите координаты вручную', true);
+        return null;
+      }
+      status.textContent = 'Разворачиваем ссылку…';
+      try {
+        const r = await data.resolveMapLink(link);
+        status.textContent = '';
+        return { lat: r.lat, lng: r.lng, place: r.place || '' };
+      } catch (e) {
+        status.innerHTML = `<span style="color:var(--warn)">${esc(e.message)}</span>`;
+        return null;
+      }
+    }
+
     body.querySelector('#save-map').onclick = async () => {
       const d = formData(body);
-      let lat = d.lat, lng = d.lng;
-      if (!lat || !lng) { const c = parseCoords(d.mapUrl); if (c) { lat = c.lat; lng = c.lng; } }
-      await S.saveVilla({ ...v, mapUrl: d.mapUrl, lat, lng });
-      toast('Локация сохранена'); rerender();
+      let lat = d.lat, lng = d.lng, place = v.mapPlace || '';
+      if (!lat || !lng) {
+        const r = await resolve(d.mapUrl);
+        if (r) { lat = r.lat; lng = r.lng; place = r.place || place; }
+      }
+      await S.saveVilla({ ...v, mapUrl: d.mapUrl, lat, lng, mapPlace: place });
+      toast(lat && lng ? 'Локация сохранена' : 'Ссылка сохранена, но точку определить не удалось', !(lat && lng));
+      rerender();
     };
+
+    // ссылка есть, а точки нет — определяем сами, без нажатий
+    if (hasLink && !coords) {
+      resolve(v.mapUrl, { quiet: true }).then(async (r) => {
+        if (!r) {
+          const box = body.querySelector('#map-box');
+          if (box) {
+            box.innerHTML = `<div class="map-empty">
+              Не получилось определить точку по этой ссылке.
+              <div style="margin-top:10px" class="row" style="justify-content:center">
+                <a class="btn btn-sm" href="${esc(v.mapUrl)}" target="_blank" rel="noopener">Открыть ссылку ↗</a>
+              </div>
+              <div class="hint" style="margin-top:8px">Откройте её, скопируйте адрес из строки браузера и вставьте сюда — либо задайте координаты вручную.</div>
+            </div>`;
+          }
+          return;
+        }
+        await S.saveVilla({ ...v, lat: r.lat, lng: r.lng, mapPlace: r.place || v.mapPlace || '' });
+        rerender();
+      });
+    }
   }
 
   // ---------- Календарь виллы (сетка по месяцам, как в Airbnb) ----------

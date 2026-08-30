@@ -137,6 +137,12 @@ export async function allFileRecords() {
 }
 export async function fileStats() { return req('api/files/stats'); }
 
+/* ---------- Карты ---------- */
+/** Разворачивает короткую ссылку Google Maps силами сервера. */
+export async function resolveMapLink(url) {
+  return req(`api/resolve-map?url=${encodeURIComponent(url)}`);
+}
+
 /* ---------- Живое обновление ---------- */
 export function subscribe(onChange) {
   const es = new EventSource(api('api/events'), { withCredentials: true });
