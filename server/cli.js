@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ===== Управление пользователями из терминала =====
-// node cli.js add почта@пример.ру [--admin] [--password СТРОКА]
+// node cli.js add ЛОГИН [--admin] [--password СТРОКА]   (логин — имя или почта)
 // node cli.js list
 // node cli.js password почта@пример.ру [--password СТРОКА]
 // node cli.js delete почта@пример.ру
@@ -18,11 +18,13 @@ const genPassword = () => crypto.randomBytes(9).toString('base64url');
 function usage() {
   console.log(`Управление пользователями CRM:
 
-  node cli.js add почта@пример.ру [--admin] [--password СТРОКА]
+  node cli.js add ЛОГИН [--admin] [--password СТРОКА]
   node cli.js list
-  node cli.js password почта@пример.ру [--password СТРОКА]
-  node cli.js delete почта@пример.ру
+  node cli.js password ЛОГИН [--password СТРОКА]
+  node cli.js delete ЛОГИН
 
+Логин — это имя латиницей (anna) или почта. Почтовый ящик не обязан существовать:
+писем система не отправляет, пароль вы задаёте сами.
 Без --password пароль придумывается автоматически и печатается один раз.`);
 }
 

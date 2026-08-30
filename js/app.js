@@ -73,7 +73,7 @@ function showLogin(message = '') {
       <h2>Bali Villas CRM</h2>
       <p class="hint">${data.isServer() ? 'Вход в систему' : 'Вход в общую базу'}</p>
       ${message ? `<div class="login-error">${esc(message)}</div>` : ''}
-      <label class="field"><span>Почта</span><input type="email" name="email" autocomplete="username" required></label>
+      <label class="field"><span>${data.isServer() ? 'Логин' : 'Почта'}</span><input type="${data.isServer() ? 'text' : 'email'}" name="email" autocomplete="username" required></label>
       <label class="field"><span>Пароль</span><input type="password" name="password" autocomplete="current-password" required></label>
       <button class="btn btn-primary" type="submit" id="login-btn">Войти</button>
       ${message ? '<button class="btn btn-ghost btn-sm" type="button" id="retry">↻ Повторить</button>' : ''}

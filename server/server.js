@@ -316,7 +316,10 @@ async function handleAuthed(req, res, url, method, user) {
     if (method === 'GET') return ok(res, { users: store.listUsers() });
     if (method === 'POST') {
       const { email, password, role } = await readJson(req);
-      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail(res, 400, 'Неверная почта');
+      // логин — либо почта, либо просто имя: писем система не шлёт, это только вход
+      if (!email || !/^[a-zA-Z0-9._@+-]{3,64}$/.test(String(email).trim())) {
+        return fail(res, 400, 'Логин: латиница, цифры, точка, дефис — от 3 символов. Можно почту.');
+      }
       if (!password || String(password).length < 8) return fail(res, 400, 'Пароль должен быть не короче 8 символов');
       if (store.userByEmail(email)) return fail(res, 409, 'Такой пользователь уже есть');
       const created = store.createUser(email, auth.hashPassword(password), role === 'admin' ? 'admin' : 'manager');

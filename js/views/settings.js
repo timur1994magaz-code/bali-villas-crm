@@ -197,7 +197,8 @@ export async function renderSettings(view, actions) {
       modal({
         title: 'Новый сотрудник', size: 'narrow',
         body: `
-          ${field('email', 'Почта', { type: 'email', placeholder: 'manager@example.com' })}
+          ${field('email', 'Логин', { placeholder: 'anna',
+            hint: 'Придумайте любой: имя латиницей или почта. Реальный почтовый ящик не нужен — писем система не отправляет.' })}
           <div style="margin-top:10px">${field('password', 'Пароль', { value: '', placeholder: 'не короче 8 символов', hint: 'Передайте его сотруднику любым удобным способом' })}</div>
           <div style="margin-top:10px">${field('role', 'Права', { options: [
             { value: 'manager', label: 'Сотрудник — полный доступ к виллам, броням и клиентам' },
@@ -211,7 +212,7 @@ export async function renderSettings(view, actions) {
             try {
               await data.selfhost.createUser(d.email, d.password, d.role);
               closeModal();
-              toast(`Сотрудник ${d.email} создан`);
+              toast(`Сотрудник ${d.email} создан — передайте ему логин и пароль`);
               drawUsers();
             } catch (e) { toast(e.message, true); }
           };
