@@ -11,6 +11,7 @@ import { renderCalendar } from './views/calendar.js';
 import { renderClientsList, renderClientCard } from './views/clients.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderSettings } from './views/settings.js';
+import { renderBase } from './views/base.js';
 import { bytes, esc, today, addDays } from './util.js';
 import { clearCloudConfig } from './config.js';
 
@@ -21,6 +22,7 @@ const titleEl = document.getElementById('page-title');
 const TITLES = {
   dashboard: 'Дашборд', villas: 'Виллы', search: 'Подбор виллы под запрос',
   calendar: 'Календарь занятости', clients: 'Клиенты', settings: 'Настройки',
+  base: 'База собственников',
 };
 
 let currentUser = null;
@@ -49,6 +51,7 @@ async function route() {
     if (page === 'clients') return renderClientsList(view, actions);
     if (page === 'client') return renderClientCard(view, actions, id);
     if (page === 'settings') return renderSettings(view, actions);
+    if (page === 'base') return renderBase(view, actions);
     return renderDashboard(view);
   } catch (e) {
     console.error(e);
