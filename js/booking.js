@@ -128,7 +128,8 @@ export function clientQuickForm(onCreated) {
       <div class="grid-2">
         ${field('country', 'Страна', { value: '' })}
         ${field('passport', 'Паспорт №', { value: '' })}
-      </div>`,
+      </div>
+      ${field('budget', 'Бюджет в месяц, Rp', { type: 'money', value: '', placeholder: '30 млн' })}`,
     footer: '<button class="btn" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Создать</button>',
     onMount(el) {
       el.querySelector('[data-cancel]').onclick = closeModal;

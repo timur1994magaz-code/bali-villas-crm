@@ -124,10 +124,29 @@ export function renderSearch(view, actions) {
   async function drawResults(res, from, to, budget) {
     const box = view.querySelector('#results');
     if (!res.rows.length) {
-      const hint = S.state.villas.length
-        ? 'Смягчите условия: увеличьте бюджет, снимите галочку «только полностью свободные» или расширьте число спален.'
-        : 'Сначала добавьте виллы в разделе «Виллы».';
-      box.innerHTML = `<div class="empty-state"><div class="big">🔎</div><h3>Ничего не подошло</h3><p>${hint}</p></div>`;
+      if (!S.state.villas.length) {
+        box.innerHTML = '<div class="empty-state"><div class="big">🔎</div><h3>Вилл пока нет</h3><p>Сначала добавьте виллы в разделе «Виллы».</p></div>';
+        return;
+      }
+      // показываем действующие условия: чаще всего мешает то, о чём забыли
+      const parts = [];
+      if (p.bedroomsMin) parts.push(`спален от ${esc(p.bedroomsMin)}`);
+      if (p.bedroomsMax) parts.push(`спален до ${esc(p.bedroomsMax)}`);
+      if (budget) parts.push(`бюджет ${moneyShort(budget)}`);
+      if (p.area) parts.push(`район «${esc(p.area)}»`);
+      if (p.onlyFree) parts.push('только полностью свободные');
+      parts.push(`${fmtDateShort(from)} → ${fmtDateShort(to)}`);
+      box.innerHTML = `<div class="empty-state"><div class="big">🔎</div><h3>Ничего не подошло</h3>
+        <p>Действующие условия: ${parts.join(' · ')}.</p>
+        <div class="row" style="justify-content:center;margin-top:14px">
+          <button class="btn btn-sm" id="clear-beds">Убрать ограничение по спальням</button>
+          <button class="btn btn-sm" id="clear-budget">Убрать бюджет</button>
+          <button class="btn btn-sm" id="show-busy">Показать и занятые</button>
+        </div></div>`;
+      const relax = (patch) => { p = { ...p, ...patch }; saveParams(p); draw(); };
+      box.querySelector('#clear-beds').onclick = () => relax({ bedroomsMin: '', bedroomsMax: '' });
+      box.querySelector('#clear-budget').onclick = () => relax({ budget: '' });
+      box.querySelector('#show-busy').onclick = () => relax({ onlyFree: false });
       return;
     }
 

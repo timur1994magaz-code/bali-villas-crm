@@ -26,7 +26,7 @@ export function renderClientsList(view, actions) {
       return;
     }
     view.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>Клиент</th><th>Телефон</th><th>WhatsApp / TG</th><th>E-mail</th><th>Страна</th><th>Проживаний</th><th>Текущее / ближайшее</th><th class="num">Оплачено</th></tr></thead>
+      <thead><tr><th>Клиент</th><th>Телефон</th><th>WhatsApp / TG</th><th>E-mail</th><th>Страна</th><th class="num">Бюджет</th><th>Проживаний</th><th>Текущее / ближайшее</th><th class="num">Оплачено</th></tr></thead>
       <tbody>${list.map((c) => {
         const bs = S.bookingsOfClient(c.id);
         const cur = bs.find((b) => b.dateFrom <= today() && today() < b.dateTo)
@@ -39,6 +39,7 @@ export function renderClientsList(view, actions) {
           <td class="nowrap">${esc(c.whatsapp || '')} ${esc(c.telegram || '')}</td>
           <td>${esc(c.email || '—')}</td>
           <td>${esc(c.country || '—')}</td>
+          <td class="num">${c.budget ? moneyShort(c.budget, 'IDR') : '—'}</td>
           <td>${bs.length}</td>
           <td>${cur ? `${esc(v ? v.name : '')} <span class="file-sub">${fmtRange(cur.dateFrom, cur.dateTo)}</span>` : '—'}</td>
           <td class="num">${paid ? moneyShort(paid, 'IDR') : '—'}</td>
@@ -105,6 +106,9 @@ export function renderClientCard(view, actions, id) {
           ${c.instagram ? `<a class="chip-link" href="https://instagram.com/${esc(String(c.instagram).replace(/^@/, ''))}" target="_blank" rel="noopener">📷 ${esc(c.instagram)}</a>` : ''}
         </div>
         <dl class="kv">
+          <dt>Бюджет в месяц</dt><dd>${c.budget
+            ? `<b>${moneyShort(c.budget, 'IDR')}</b> <button class="btn btn-sm" id="c-pick" style="margin-left:8px">🔎 Подобрать виллы</button>`
+            : '<span class="mute">не указан</span>'}</dd>
           <dt>Страна</dt><dd>${esc(c.country || '—')}</dd>
           <dt>Паспорт №</dt><dd>${esc(c.passport || '—')}</dd>
           <dt>Источник</dt><dd>${esc(c.source || '—')}</dd>
@@ -134,6 +138,20 @@ export function renderClientCard(view, actions, id) {
     </div>`;
   renderDocs(view.querySelector('#c-docs'), 'client', c.id,
     { title: '📁 Документы: договор, паспорт, виза' });
+
+  // бюджет клиента сразу переносим в подбор — не переписывать же его руками
+  const pick = view.querySelector('#c-pick');
+  if (pick) pick.onclick = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('searchParams') || '{}');
+      localStorage.setItem('searchParams', JSON.stringify({
+        from: saved.from || today(), months: saved.months || 2, to: '',
+        bedroomsMin: '', bedroomsMax: '', area: '',   // условия прошлого поиска не тащим
+        budget: String(c.budget), onlyFree: true,
+      }));
+    } catch (e) { void e; }
+    location.hash = '#/search';
+  };
   view.querySelectorAll('tr[data-b]').forEach((tr) => {
     tr.onclick = () => bookingCard(tr.dataset.b, { onChanged: () => renderClientCard(view, actions, id) });
   });
@@ -158,6 +176,8 @@ export function clientForm(c) {
         ${field('passport', 'Паспорт №', { value: c.passport })}
         ${field('instagram', 'Instagram', { value: c.instagram })}
       </div>
+      ${field('budget', 'Бюджет в месяц, Rp', { type: 'money', value: c.budget,
+        placeholder: '30 млн', hint: 'Сколько клиент готов платить за виллу. Можно писать «30 млн» или «30jt».' })}
       ${field('source', 'Источник', { value: c.source, placeholder: 'Instagram / Airbnb / рекомендация' })}
       ${field('notes', 'Заметки', { type: 'textarea', value: c.notes, rows: 3 })}
       <div class="hint" style="margin-top:6px">📎 Паспорт и договор загружаются в карточке клиента — кнопка «Паспорт / договор» вверху.</div>`,

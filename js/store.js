@@ -54,7 +54,7 @@ export async function deleteVilla(id) {
 export function emptyClient() {
   return {
     id: db.uid(), name: '', phone: '', whatsapp: '', telegram: '', email: '',
-    country: '', passport: '', instagram: '', source: '', notes: '',
+    country: '', passport: '', instagram: '', source: '', notes: '', budget: '',
     createdAt: new Date().toISOString(),
   };
 }
