@@ -54,7 +54,9 @@ export async function deleteVilla(id) {
 export function emptyClient() {
   return {
     id: db.uid(), name: '', phone: '', whatsapp: '', telegram: '', email: '',
-    country: '', passport: '', instagram: '', source: '', notes: '', budget: '',
+    instagram: '', source: '', notes: '',
+    budget: '', wantBedrooms: '', wantArea: '',   // запрос клиента: бюджет, комнаты, желаемый район
+    country: '', passport: '',                     // остались для старых записей, в интерфейсе не показываются
     createdAt: new Date().toISOString(),
   };
 }
@@ -266,7 +268,8 @@ export function availability(villaId, from, to) {
  * Возвращает список вилл с ценой в валюте бюджета и раскладом по свободным датам.
  */
 export function searchVillas({ from, to, bedroomsMin, bedroomsMax, budget,
-  area = '', onlyFree = true, onlyWithinBudget = true } = {}) {
+  preferArea = '', onlyFree = true, onlyWithinBudget = true } = {}) {
+  const wanted = String(preferArea || '').trim().toLowerCase();
   const months = from && to ? daysBetween(from, to) / 30.44 : 1;
 
   const rows = state.villas.map((v) => {
@@ -276,6 +279,8 @@ export function searchVillas({ from, to, bedroomsMin, bedroomsMax, budget,
     return {
       villa: v,
       beds,
+      // район не исключает: просто помечаем совпадение и поднимаем такие виллы выше
+      areaMatch: !!wanted && String(v.area || '').toLowerCase().includes(wanted),
       price,
       monthTotal: price ? price.amount : null,
       periodTotal: price ? price.amount * months : null,
@@ -287,14 +292,14 @@ export function searchVillas({ from, to, bedroomsMin, bedroomsMax, budget,
   const filtered = rows.filter((r) => {
     if (bedroomsMin && (!r.beds || r.beds < bedroomsMin)) return false;
     if (bedroomsMax && r.beds && r.beds > bedroomsMax) return false;
-    if (area && !String(r.villa.area || '').toLowerCase().includes(area.toLowerCase())) return false;
     if (onlyWithinBudget && budget && (!r.price || r.overBudget)) return false;
     if (onlyFree && r.availability && !r.availability.fullyFree) return false;
     return true;
   });
 
-  // сначала дешёвые, виллы без цены — в конец
+  // сначала нужный район, внутри — от дешёвых; виллы без цены в конец
   filtered.sort((a, b) => {
+    if (a.areaMatch !== b.areaMatch) return a.areaMatch ? -1 : 1;
     if (a.monthTotal === null) return 1;
     if (b.monthTotal === null) return -1;
     return a.monthTotal - b.monthTotal;

@@ -17,7 +17,7 @@ export function renderClientsList(view, actions) {
 
   function draw() {
     const list = sortBy(S.state.clients, 'name').filter((c) => !q ||
-      [c.name, c.phone, c.whatsapp, c.telegram, c.email, c.country, c.passport].join(' ').toLowerCase().includes(q));
+      [c.name, c.phone, c.whatsapp, c.telegram, c.email, c.wantArea, c.source].join(' ').toLowerCase().includes(q));
     if (!S.state.clients.length) {
       view.innerHTML = `<div class="empty-state"><div class="big">👤</div><h3>Клиентов пока нет</h3>
         <p>Клиенты появляются автоматически, когда вы создаёте бронь, либо добавьте вручную.</p>
@@ -26,7 +26,7 @@ export function renderClientsList(view, actions) {
       return;
     }
     view.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>Клиент</th><th>Телефон</th><th>WhatsApp / TG</th><th>E-mail</th><th>Страна</th><th class="num">Бюджет</th><th>Проживаний</th><th>Текущее / ближайшее</th><th class="num">Оплачено</th></tr></thead>
+      <thead><tr><th>Клиент</th><th>Телефон</th><th>WhatsApp / TG</th><th>E-mail</th><th class="num">Комнат</th><th>Район</th><th class="num">Бюджет</th><th>Проживаний</th><th>Текущее / ближайшее</th><th class="num">Оплачено</th></tr></thead>
       <tbody>${list.map((c) => {
         const bs = S.bookingsOfClient(c.id);
         const cur = bs.find((b) => b.dateFrom <= today() && today() < b.dateTo)
@@ -38,7 +38,8 @@ export function renderClientsList(view, actions) {
           <td class="nowrap">${esc(c.phone || '—')}</td>
           <td class="nowrap">${esc(c.whatsapp || '')} ${esc(c.telegram || '')}</td>
           <td>${esc(c.email || '—')}</td>
-          <td>${esc(c.country || '—')}</td>
+          <td class="num">${esc(c.wantBedrooms || '—')}</td>
+          <td>${esc(c.wantArea || '—')}</td>
           <td class="num">${c.budget ? moneyShort(c.budget, 'IDR') : '—'}</td>
           <td>${bs.length}</td>
           <td>${cur ? `${esc(v ? v.name : '')} <span class="file-sub">${fmtRange(cur.dateFrom, cur.dateTo)}</span>` : '—'}</td>
@@ -106,11 +107,11 @@ export function renderClientCard(view, actions, id) {
           ${c.instagram ? `<a class="chip-link" href="https://instagram.com/${esc(String(c.instagram).replace(/^@/, ''))}" target="_blank" rel="noopener">📷 ${esc(c.instagram)}</a>` : ''}
         </div>
         <dl class="kv">
-          <dt>Бюджет в месяц</dt><dd>${c.budget
-            ? `<b>${moneyShort(c.budget, 'IDR')}</b> <button class="btn btn-sm" id="c-pick" style="margin-left:8px">🔎 Подобрать виллы</button>`
-            : '<span class="mute">не указан</span>'}</dd>
-          <dt>Страна</dt><dd>${esc(c.country || '—')}</dd>
-          <dt>Паспорт №</dt><dd>${esc(c.passport || '—')}</dd>
+          <dt>Бюджет в месяц</dt><dd>${c.budget ? `<b>${moneyShort(c.budget, 'IDR')}</b>` : '<span class="mute">не указан</span>'}
+            ${c.budget || c.wantBedrooms || c.wantArea
+              ? '<button class="btn btn-sm" id="c-pick" style="margin-left:8px">🔎 Подобрать виллы</button>' : ''}</dd>
+          <dt>Кол-во комнат</dt><dd>${c.wantBedrooms ? esc(c.wantBedrooms) + ' и больше' : '<span class="mute">не указано</span>'}</dd>
+          <dt>Район</dt><dd>${c.wantArea ? esc(c.wantArea) + ' <span class="mute">(другие районы тоже покажем)</span>' : '<span class="mute">не важен</span>'}</dd>
           <dt>Источник</dt><dd>${esc(c.source || '—')}</dd>
           <dt>Добавлен</dt><dd>${c.createdAt ? fmtDate(c.createdAt.slice(0, 10)) : '—'}</dd>
         </dl>
@@ -146,8 +147,9 @@ export function renderClientCard(view, actions, id) {
       const saved = JSON.parse(localStorage.getItem('searchParams') || '{}');
       localStorage.setItem('searchParams', JSON.stringify({
         from: saved.from || today(), months: saved.months || 2, to: '',
-        bedroomsMin: '', bedroomsMax: '', area: '',   // условия прошлого поиска не тащим
-        budget: String(c.budget), onlyFree: true,
+        bedroomsMin: String(c.wantBedrooms || ''), bedroomsMax: '',
+        preferArea: String(c.wantArea || ''),        // район поднимает, но не отсекает
+        budget: String(c.budget || ''), onlyFree: true,
       }));
     } catch (e) { void e; }
     location.hash = '#/search';
@@ -172,12 +174,12 @@ export function clientForm(c) {
         ${field('email', 'E-mail', { type: 'email', value: c.email })}
       </div>
       <div class="grid-3">
-        ${field('country', 'Страна', { value: c.country })}
-        ${field('passport', 'Паспорт №', { value: c.passport })}
+        ${field('wantBedrooms', 'Кол-во комнат', { type: 'number', value: c.wantBedrooms, placeholder: '2' })}
+        ${field('wantArea', 'Район', { value: c.wantArea, placeholder: 'Переренан, Чангу…' })}
         ${field('instagram', 'Instagram', { value: c.instagram })}
       </div>
       ${field('budget', 'Бюджет в месяц, Rp', { type: 'money', value: c.budget,
-        placeholder: '30 млн', hint: 'Сколько клиент готов платить за виллу. Можно писать «30 млн» или «30jt».' })}
+        placeholder: '30 млн', hint: 'Запрос клиента. Район не отсекает другие: виллы в нём просто идут первыми.' })}
       ${field('source', 'Источник', { value: c.source, placeholder: 'Instagram / Airbnb / рекомендация' })}
       ${field('notes', 'Заметки', { type: 'textarea', value: c.notes, rows: 3 })}
       <div class="hint" style="margin-top:6px">📎 Паспорт и договор загружаются в карточке клиента — кнопка «Паспорт / договор» вверху.</div>`,

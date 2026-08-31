@@ -13,7 +13,7 @@ function loadParams() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
     return { from: today(), months: 2, bedroomsMin: '', bedroomsMax: '', budget: '',
-      area: '', onlyFree: true, ...saved };
+      preferArea: '', onlyFree: true, ...saved };
   } catch (e) {
     void e;
     return { from: today(), months: 2, onlyFree: true };
@@ -45,7 +45,7 @@ export function renderSearch(view, actions) {
       bedroomsMin: Number(p.bedroomsMin) || 0,
       bedroomsMax: Number(p.bedroomsMax) || 0,
       budget,
-      area: p.area || '',
+      preferArea: p.preferArea || '',
       onlyFree: !!p.onlyFree,
       onlyWithinBudget: !!budget,
     });
@@ -61,7 +61,9 @@ export function renderSearch(view, actions) {
               <option value="custom"${p.to ? ' selected' : ''}>своя дата выезда</option>
             </select></label>
           <label class="field"><span>Выезд</span><input type="date" name="to" value="${esc(to)}"></label>
-          <label class="field"><span>Район</span><input type="text" name="area" value="${esc(p.area || '')}" placeholder="Чангу, Убуд…"></label>
+          <label class="field"><span>Район (подсказка)</span>
+            <input type="text" name="preferArea" value="${esc(p.preferArea || '')}" placeholder="Переренан, Чангу…">
+            <span class="hint">не отсекает: такие виллы просто идут первыми</span></label>
         </div>
         <div class="grid-3" style="margin-top:12px">
           <label class="field"><span>Спален от</span><input type="number" name="bedroomsMin" min="0" value="${esc(p.bedroomsMin || '')}" placeholder="2"></label>
@@ -80,7 +82,9 @@ export function renderSearch(view, actions) {
       <div class="row" style="margin:14px 0 10px">
         <b>${res.rows.length ? `Подходит вилл: ${res.rows.length}` : 'Ничего не подошло'}</b>
         <span class="mute">из ${S.state.villas.length}</span>
-        ${budget ? '<span class="hint">сортировка по цене, дешёвые сверху</span>' : ''}
+        ${p.preferArea
+          ? `<span class="hint">сверху — район «${esc(p.preferArea)}», ниже остальные</span>`
+          : budget ? '<span class="hint">сортировка по цене, дешёвые сверху</span>' : ''}
       </div>
 
       <div id="results"></div>`;
@@ -93,7 +97,7 @@ export function renderSearch(view, actions) {
         from: get('from').value || today(),
         months: get('months').value,
         to: get('to').value,
-        area: get('area').value.trim(),
+        preferArea: get('preferArea').value.trim(),
         bedroomsMin: get('bedroomsMin').value,
         bedroomsMax: get('bedroomsMax').value,
         budget: get('budget').value.trim(),
@@ -133,7 +137,6 @@ export function renderSearch(view, actions) {
       if (p.bedroomsMin) parts.push(`спален от ${esc(p.bedroomsMin)}`);
       if (p.bedroomsMax) parts.push(`спален до ${esc(p.bedroomsMax)}`);
       if (budget) parts.push(`бюджет ${moneyShort(budget)}`);
-      if (p.area) parts.push(`район «${esc(p.area)}»`);
       if (p.onlyFree) parts.push('только полностью свободные');
       parts.push(`${fmtDateShort(from)} → ${fmtDateShort(to)}`);
       box.innerHTML = `<div class="empty-state"><div class="big">🔎</div><h3>Ничего не подошло</h3>
@@ -173,6 +176,7 @@ export function renderSearch(view, actions) {
           <div class="row" style="gap:8px">
             <b class="search-name">${esc(v.name)}</b>
             ${status}
+            ${r.areaMatch ? '<span class="badge b-option">нужный район</span>' : ''}
           </div>
           <div class="villa-meta">
             ${v.bedrooms ? `<span>🛏 ${esc(v.bedrooms)} ${plural(Number(v.bedrooms) || 0, 'спальня', 'спальни', 'спален')}</span>` : ''}

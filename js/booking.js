@@ -126,8 +126,8 @@ export function clientQuickForm(onCreated) {
         ${field('email', 'E-mail', { type: 'email', value: '' })}
       </div>
       <div class="grid-2">
-        ${field('country', 'Страна', { value: '' })}
-        ${field('passport', 'Паспорт №', { value: '' })}
+        ${field('wantBedrooms', 'Кол-во комнат', { type: 'number', value: '', placeholder: '2' })}
+        ${field('wantArea', 'Район', { value: '', placeholder: 'Переренан' })}
       </div>
       ${field('budget', 'Бюджет в месяц, Rp', { type: 'money', value: '', placeholder: '30 млн' })}`,
     footer: '<button class="btn" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Создать</button>',
@@ -180,7 +180,11 @@ export function bookingCard(id, { onChanged } = {}) {
             ${c ? `<a class="btn btn-sm" href="#/client/${c.id}" data-goclient>Карточка клиента</a>` : ''}</div>
           <div style="font-size:16px;font-weight:650;margin-bottom:8px">${c ? esc(c.name) : '—'}</div>
           ${contactChips}
-          ${c && (c.country || c.passport) ? `<div class="hint" style="margin-top:8px">${c.country ? '🌍 ' + esc(c.country) : ''} ${c.passport ? ' · 🛂 ' + esc(c.passport) : ''}</div>` : ''}
+          ${c && (c.wantBedrooms || c.wantArea || c.budget) ? `<div class="hint" style="margin-top:8px">Искал(а): ${[
+        c.wantBedrooms ? esc(c.wantBedrooms) + '+ комн.' : '',
+        c.wantArea ? esc(c.wantArea) : '',
+        c.budget ? money(c.budget) + ' в месяц' : '',
+      ].filter(Boolean).join(' · ')}</div>` : ''}
         </div>
         <div class="panel" style="padding:14px">
           <div class="panel-head"><h3>💰 Деньги</h3></div>
