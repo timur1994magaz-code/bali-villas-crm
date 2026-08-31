@@ -1,10 +1,12 @@
 // ===== База собственников: контакты вилл, собранные из Google Maps и сайтов вилл =====
 import * as S from '../store.js';
-import { esc, phoneHref, waHref, download } from '../util.js';
+import * as data from '../data.js';
+import { esc, phoneHref, waHref, download, fmtDateShort } from '../util.js';
 import { toast } from '../ui.js';
 import { villaForm } from './villa.js';
 
 const AREAS = ['Чангу', 'Переренан', 'Сесех', 'Чемаги', 'Мунггу', 'Тумбак Баюх'];
+const REJECTS_KEY = 'baseRejects';
 
 // вердикт → подпись и цветовой вариант бейджа
 const VERDICTS = {
@@ -16,6 +18,11 @@ const VERDICTS = {
 const OWNERISH = ['СОБСТВЕННИК (кандидат)', 'вероятно собственник'];
 
 let cache = null;   // json грузим один раз за сессию
+let me = null;      // кто работает: подписываем отказы
+
+// состояние фильтров держим вне рендера: живая синхронизация с другим
+// сотрудником перерисовывает раздел, и иначе слетал бы поиск и выбранный район
+let q = '', group = 'owners', areas = new Set(), limit = 100;
 
 async function loadBase() {
   if (cache) return cache;
@@ -25,13 +32,16 @@ async function loadBase() {
   return cache;
 }
 
+const rejects = () => S.state.settings[REJECTS_KEY] || {};
+
 export async function renderBase(view, actions) {
   actions.innerHTML = `
-    <input class="search" id="base-search" type="search" placeholder="Поиск: вилла, деревня, телефон, почта…">
+    <input class="search" id="base-search" type="search" placeholder="Поиск: вилла, деревня, телефон, почта…" value="${esc(q)}">
     <div class="seg" id="base-seg">
-      <button data-group="owners" class="active">Собственники</button>
+      <button data-group="owners">Собственники</button>
       <button data-group="all">Все</button>
       <button data-group="agents">Агенты</button>
+      <button data-group="rejected">Отказы</button>
     </div>
     <button class="btn" id="base-export">↓ CSV</button>`;
 
@@ -50,8 +60,7 @@ export async function renderBase(view, actions) {
     </div>`;
     return;
   }
-
-  let q = '', group = 'owners', areas = new Set(), limit = 100;
+  if (me === null) { try { me = await data.currentUser(); } catch { me = false; } }
 
   view.innerHTML = `
     <div class="base-head">
@@ -65,6 +74,7 @@ export async function renderBase(view, actions) {
 
   actions.querySelector('#base-search').oninput = (e) => { q = e.target.value.toLowerCase(); limit = 100; draw(); };
   actions.querySelectorAll('#base-seg button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.group === group);
     b.onclick = () => {
       group = b.dataset.group; limit = 100;
       actions.querySelectorAll('#base-seg button').forEach((x) => x.classList.toggle('active', x === b));
@@ -90,7 +100,10 @@ export async function renderBase(view, actions) {
   }
 
   function filtered() {
+    const rj = rejects();
     let rows = base.rows;
+    // отказы убираем из рабочих списков — они живут на своей вкладке
+    rows = group === 'rejected' ? rows.filter((r) => rj[r.k]) : rows.filter((r) => !rj[r.k]);
     if (group === 'owners') rows = rows.filter((r) => OWNERISH.includes(r.d));
     if (group === 'agents') rows = rows.filter((r) => r.d === 'АГЕНТ/УК');
     if (areas.size) rows = rows.filter((r) => areas.has(r.a));
@@ -107,12 +120,24 @@ export async function renderBase(view, actions) {
     (v.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase());
 
   function draw() {
+    const rj = rejects();
+    const rjCount = Object.keys(rj).length;
+    const segRejected = actions.querySelector('[data-group="rejected"]');
+    if (segRejected) segRejected.innerHTML = `Отказы${rjCount ? ` <span class="mute">${rjCount}</span>` : ''}`;
+
     const rows = filtered();
     const show = rows.slice(0, limit);
-    note.innerHTML = `Показано <b>${show.length}</b> из <b>${rows.length}</b> · всего в базе ${base.rows.length} контактов
+    note.innerHTML = `Показано <b>${show.length}</b> из <b>${rows.length}</b> · всего в базе ${base.rows.length} контактов${
+      rjCount ? ` · отказов ${rjCount}` : ''}
       <span class="hint">· источник: ${esc(base.source)}, собрано ${esc(base.generated)}</span>`;
 
-    if (!rows.length) { body.innerHTML = '<div class="empty-state">Ничего не найдено</div>'; return; }
+    if (!rows.length) {
+      body.className = '';
+      body.innerHTML = `<div class="empty-state">${group === 'rejected'
+        ? 'Отказов пока нет. Кнопка «Отказ» убирает контакт из рабочих списков — сюда.'
+        : 'Ничего не найдено'}</div>`;
+      return;
+    }
 
     body.className = 'table-wrap';
     body.innerHTML = `<table>
@@ -127,8 +152,21 @@ export async function renderBase(view, actions) {
         if (r.p) links.push(`<a class="chip-link" href="${waHref(r.p)}" target="_blank" rel="noopener">WhatsApp</a>`);
         if (r.i) links.push(`<a class="chip-link" href="${esc(r.i)}" target="_blank" rel="noopener">Instagram</a>`);
         if (r.w) links.push(`<a class="chip-link" href="${esc(r.w)}" target="_blank" rel="noopener">Сайт</a>`);
-        const added = inCrm(r.n);
-        return `<tr>
+        const rec = rj[r.k];
+        let action;
+        if (rec) {
+          action = `<div class="base-rejected">Отказ${rec.at ? ` · ${esc(fmtDateShort(rec.at))}` : ''}</div>
+            ${rec.by ? `<div class="file-sub">${esc(rec.by)}</div>` : ''}
+            <button class="btn btn-sm" data-unreject="${i}">↩ Вернуть</button>`;
+        } else if (inCrm(r.n)) {
+          action = '<span class="file-sub">уже в CRM</span>';
+        } else {
+          action = `<div class="base-actions">
+            <button class="btn btn-sm" data-add="${i}">+ В CRM</button>
+            <button class="btn btn-sm btn-danger" data-reject="${i}">Отказ</button>
+          </div>`;
+        }
+        return `<tr${rec ? ' class="base-row-off"' : ''}>
           <td><b>${esc(r.n)}</b>${meta ? `<div class="file-sub">${esc(meta)}</div>` : ''}</td>
           <td>${esc(r.a)}${r.v ? `<div class="file-sub">${esc(r.v)}</div>` : ''}</td>
           <td><span class="badge ${v.cls}">${esc(v.label)}</span></td>
@@ -139,9 +177,7 @@ export async function renderBase(view, actions) {
           </td>
           <td><a href="https://www.google.com/maps/place/?q=place_id:${esc(r.k)}" target="_blank" rel="noopener">Google Maps ↗</a></td>
           <td style="max-width:230px"><span class="file-sub">${esc(r.y || '')}</span></td>
-          <td class="num">${added
-            ? '<span class="file-sub">уже в CRM</span>'
-            : `<button class="btn btn-sm" data-add="${i}">+ В CRM</button>`}</td>
+          <td class="num">${action}</td>
         </tr>`;
       }).join('')}</tbody></table>
       ${rows.length > limit ? `<div class="base-more"><button class="btn" id="base-more">Показать ещё ${Math.min(100, rows.length - limit)}</button></div>` : ''}`;
@@ -149,8 +185,27 @@ export async function renderBase(view, actions) {
     body.onclick = (e) => {
       if (e.target.id === 'base-more') { limit += 100; draw(); return; }
       const add = e.target.closest('[data-add]');
-      if (add) toCrm(show[Number(add.dataset.add)]);
+      if (add) return toCrm(show[Number(add.dataset.add)]);
+      const rej = e.target.closest('[data-reject]');
+      if (rej) return setReject(show[Number(rej.dataset.reject)], true);
+      const un = e.target.closest('[data-unreject]');
+      if (un) return setReject(show[Number(un.dataset.unreject)], false);
     };
+  }
+
+  // отказ храним в общих настройках: второй сотрудник увидит его сразу
+  async function setReject(r, on) {
+    if (!r) return;
+    const next = { ...rejects() };
+    if (on) next[r.k] = { at: new Date().toISOString().slice(0, 10), by: (me && me.email) || '' };
+    else delete next[r.k];
+    try {
+      await S.setSetting(REJECTS_KEY, next);
+      draw();
+      toast(on ? `«${r.n}» — отказ` : `«${r.n}» вернули в работу`);
+    } catch (e) {
+      toast('Не удалось сохранить: ' + e.message, true);
+    }
   }
 
   // переносим строку базы в карточку виллы — форма открывается уже заполненной
@@ -178,12 +233,13 @@ export async function renderBase(view, actions) {
 
   function exportCsv(rows) {
     if (!rows.length) return toast('В выборке пусто', true);
+    const rj = rejects();
     const cols = [['Название', 'n'], ['Район', 'a'], ['Деревня', 'v'], ['Вердикт', 'd'],
                   ['Телефон', 'p'], ['Email', 'e'], ['Instagram', 'i'], ['Сайт', 'w'],
                   ['Категория', 'c'], ['Спальни', 'bd'], ['Рейтинг', 'rt'], ['Обоснование', 'y']];
     const q1 = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
-    const csv = [cols.map((c) => q1(c[0])).join(';')]
-      .concat(rows.map((r) => cols.map((c) => q1(r[c[1]])).join(';')))
+    const csv = [cols.map((c) => q1(c[0])).concat(q1('Отказ')).join(';')]
+      .concat(rows.map((r) => cols.map((c) => q1(r[c[1]])).concat(q1(rj[r.k] ? rj[r.k].at || 'да' : '')).join(';')))
       .join('\n');
     download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }),
              `собственники-${new Date().toISOString().slice(0, 10)}.csv`);
