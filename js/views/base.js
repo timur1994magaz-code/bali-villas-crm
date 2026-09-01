@@ -6,7 +6,9 @@ import { toast } from '../ui.js';
 import { villaForm } from './villa.js';
 
 const AREAS = ['Чангу', 'Переренан', 'Сесех', 'Чемаги', 'Мунггу', 'Тумбак Баюх'];
-const REJECTS_KEY = 'baseRejects';
+const REJECTS_KEY = 'baseRejects';   // с кем не сложилось
+const WRITTEN_KEY = 'baseWritten';   // кому уже написали
+const NOTES_KEY = 'baseNotes';       // наши заметки поверх автоматического обоснования
 
 // вердикт → подпись и цветовой вариант бейджа
 const VERDICTS = {
@@ -22,7 +24,7 @@ let me = null;      // кто работает: подписываем отка�
 
 // состояние фильтров держим вне рендера: живая синхронизация с другим
 // сотрудником перерисовывает раздел, и иначе слетал бы поиск и выбранный район
-let q = '', group = 'owners', areas = new Set(), limit = 100;
+let q = '', group = 'owners', areas = new Set(), limit = 100, onlyUnwritten = false;
 
 async function loadBase() {
   if (cache) return cache;
@@ -33,6 +35,8 @@ async function loadBase() {
 }
 
 const rejects = () => S.state.settings[REJECTS_KEY] || {};
+const written = () => S.state.settings[WRITTEN_KEY] || {};
+const notes   = () => S.state.settings[NOTES_KEY] || {};
 
 export async function renderBase(view, actions) {
   actions.innerHTML = `
@@ -65,6 +69,9 @@ export async function renderBase(view, actions) {
   view.innerHTML = `
     <div class="base-head">
       <div class="base-chips" id="base-areas"></div>
+      <div class="base-chips">
+        <button class="base-chip${onlyUnwritten ? ' active' : ''}" id="base-unwritten">✉️ Кому ещё не писали</button>
+      </div>
       <div class="base-note" id="base-note"></div>
     </div>
     <div id="base-body"></div>`;
@@ -82,6 +89,11 @@ export async function renderBase(view, actions) {
     };
   });
   actions.querySelector('#base-export').onclick = () => exportCsv(filtered());
+  view.querySelector('#base-unwritten').onclick = (e) => {
+    onlyUnwritten = !onlyUnwritten;
+    e.currentTarget.classList.toggle('active', onlyUnwritten);
+    limit = 100; draw();
+  };
 
   function drawChips() {
     const all = base.rows;
@@ -107,6 +119,7 @@ export async function renderBase(view, actions) {
     if (group === 'owners') rows = rows.filter((r) => OWNERISH.includes(r.d));
     if (group === 'agents') rows = rows.filter((r) => r.d === 'АГЕНТ/УК');
     if (areas.size) rows = rows.filter((r) => areas.has(r.a));
+    if (onlyUnwritten) { const w = written(); rows = rows.filter((r) => !w[r.k]); }
     if (q) rows = rows.filter((r) =>
       [r.n, r.v, r.p, r.e, r.c].join(' ').toLowerCase().includes(q));
     return rows.slice().sort((a, b) =>
@@ -120,15 +133,16 @@ export async function renderBase(view, actions) {
     (v.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase());
 
   function draw() {
-    const rj = rejects();
+    const rj = rejects(), wr = written(), nt = notes();
     const rjCount = Object.keys(rj).length;
+    const wrCount = Object.keys(wr).length;
     const segRejected = actions.querySelector('[data-group="rejected"]');
     if (segRejected) segRejected.innerHTML = `Отказы${rjCount ? ` <span class="mute">${rjCount}</span>` : ''}`;
 
     const rows = filtered();
     const show = rows.slice(0, limit);
     note.innerHTML = `Показано <b>${show.length}</b> из <b>${rows.length}</b> · всего в базе ${base.rows.length} контактов${
-      rjCount ? ` · отказов ${rjCount}` : ''}
+      wrCount ? ` · написали <b>${wrCount}</b>` : ''}${rjCount ? ` · отказов ${rjCount}` : ''}
       <span class="hint">· источник: ${esc(base.source)}, собрано ${esc(base.generated)}</span>`;
 
     if (!rows.length) {
@@ -153,20 +167,25 @@ export async function renderBase(view, actions) {
         if (r.i) links.push(`<a class="chip-link" href="${esc(r.i)}" target="_blank" rel="noopener">Instagram</a>`);
         if (r.w) links.push(`<a class="chip-link" href="${esc(r.w)}" target="_blank" rel="noopener">Сайт</a>`);
         const rec = rj[r.k];
+        const w = wr[r.k];
+        const mark = `<label class="base-written${w ? ' on' : ''}" title="Отметить, что мы написали">
+            <input type="checkbox" data-written="${i}"${w ? ' checked' : ''}>
+            <span>${w ? `Написали · ${esc(fmtDateShort(w.at))}` : 'Написали'}</span>
+          </label>`;
         let action;
         if (rec) {
           action = `<div class="base-rejected">Отказ${rec.at ? ` · ${esc(fmtDateShort(rec.at))}` : ''}</div>
             ${rec.by ? `<div class="file-sub">${esc(rec.by)}</div>` : ''}
             <button class="btn btn-sm" data-unreject="${i}">↩ Вернуть</button>`;
         } else if (inCrm(r.n)) {
-          action = '<span class="file-sub">уже в CRM</span>';
+          action = `${mark}<div class="file-sub" style="margin-top:4px">уже в CRM</div>`;
         } else {
-          action = `<div class="base-actions">
+          action = `${mark}<div class="base-actions">
             <button class="btn btn-sm" data-add="${i}">+ В CRM</button>
             <button class="btn btn-sm btn-danger" data-reject="${i}">Отказ</button>
           </div>`;
         }
-        return `<tr${rec ? ' class="base-row-off"' : ''}>
+        return `<tr class="${rec ? 'base-row-off' : ''}${w && !rec ? ' base-row-written' : ''}">
           <td><b>${esc(r.n)}</b>${meta ? `<div class="file-sub">${esc(meta)}</div>` : ''}</td>
           <td>${esc(r.a)}${r.v ? `<div class="file-sub">${esc(r.v)}</div>` : ''}</td>
           <td><span class="badge ${v.cls}">${esc(v.label)}</span></td>
@@ -176,7 +195,11 @@ export async function renderBase(view, actions) {
             ${links.length ? `<div class="chip-links" style="margin-top:6px">${links.join('')}</div>` : ''}
           </td>
           <td><a href="https://www.google.com/maps/place/?q=place_id:${esc(r.k)}" target="_blank" rel="noopener">Google Maps ↗</a></td>
-          <td style="max-width:230px"><span class="file-sub">${esc(r.y || '')}</span></td>
+          <td class="base-why">
+            ${r.y ? `<span class="file-sub">${esc(r.y)}</span>` : ''}
+            <textarea class="base-note-input" rows="1" data-note="${i}"
+              placeholder="Заметка…">${esc(nt[r.k] || '')}</textarea>
+          </td>
           <td class="num">${action}</td>
         </tr>`;
       }).join('')}</tbody></table>
@@ -190,6 +213,13 @@ export async function renderBase(view, actions) {
       if (rej) return setReject(show[Number(rej.dataset.reject)], true);
       const un = e.target.closest('[data-unreject]');
       if (un) return setReject(show[Number(un.dataset.unreject)], false);
+    };
+
+    body.onchange = (e) => {
+      const w = e.target.closest('[data-written]');
+      if (w) return setWritten(show[Number(w.dataset.written)], w.checked);
+      const n = e.target.closest('[data-note]');
+      if (n) return saveNote(show[Number(n.dataset.note)], n.value);
     };
   }
 
@@ -205,6 +235,37 @@ export async function renderBase(view, actions) {
       toast(on ? `«${r.n}» — отказ` : `«${r.n}» вернули в работу`);
     } catch (e) {
       toast('Не удалось сохранить: ' + e.message, true);
+    }
+  }
+
+  // кому написали: отметка общая, чтобы не писать одному человеку дважды
+  async function setWritten(r, on) {
+    if (!r) return;
+    const next = { ...written() };
+    if (on) next[r.k] = { at: new Date().toISOString().slice(0, 10), by: (me && me.email) || '' };
+    else delete next[r.k];
+    try {
+      await S.setSetting(WRITTEN_KEY, next);
+      draw();
+    } catch (e) {
+      toast('Не удалось сохранить: ' + e.message, true);
+    }
+  }
+
+  // заметка сохраняется по уходу из поля; перерисовку не делаем,
+  // иначе следующее поле теряло бы фокус посреди работы
+  async function saveNote(r, text) {
+    if (!r) return;
+    const cur = notes();
+    const val = String(text || '').trim();
+    if ((cur[r.k] || '') === val) return;
+    const next = { ...cur };
+    if (val) next[r.k] = val; else delete next[r.k];
+    try {
+      await S.setSetting(NOTES_KEY, next);
+      toast(val ? 'Заметка сохранена' : 'Заметка удалена');
+    } catch (e) {
+      toast('Не удалось сохранить заметку: ' + e.message, true);
     }
   }
 
@@ -233,13 +294,18 @@ export async function renderBase(view, actions) {
 
   function exportCsv(rows) {
     if (!rows.length) return toast('В выборке пусто', true);
-    const rj = rejects();
+    const rj = rejects(), wr = written(), nt = notes();
     const cols = [['Название', 'n'], ['Район', 'a'], ['Деревня', 'v'], ['Вердикт', 'd'],
                   ['Телефон', 'p'], ['Email', 'e'], ['Instagram', 'i'], ['Сайт', 'w'],
                   ['Категория', 'c'], ['Спальни', 'bd'], ['Рейтинг', 'rt'], ['Обоснование', 'y']];
     const q1 = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
-    const csv = [cols.map((c) => q1(c[0])).concat(q1('Отказ')).join(';')]
-      .concat(rows.map((r) => cols.map((c) => q1(r[c[1]])).concat(q1(rj[r.k] ? rj[r.k].at || 'да' : '')).join(';')))
+    const extra = ['Написали', 'Заметка', 'Отказ'];
+    const csv = [cols.map((c) => q1(c[0])).concat(extra.map(q1)).join(';')]
+      .concat(rows.map((r) => cols.map((c) => q1(r[c[1]])).concat([
+        q1(wr[r.k] ? wr[r.k].at || 'да' : ''),
+        q1(nt[r.k] || ''),
+        q1(rj[r.k] ? rj[r.k].at || 'да' : ''),
+      ]).join(';')))
       .join('\n');
     download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }),
              `собственники-${new Date().toISOString().slice(0, 10)}.csv`);

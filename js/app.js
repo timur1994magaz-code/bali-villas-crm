@@ -134,8 +134,11 @@ async function startRealtime() {
       clearTimeout(reloadTimer);
       reloadTimer = setTimeout(async () => {
         const modalOpen = !document.getElementById('modal-root').hidden;
+        // и форму, и начатый ввод в списке (заметка в «Базе») не выдёргиваем из-под рук
+        const el = document.activeElement;
+        const typing = el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
         await S.load();
-        if (!modalOpen) route();      // не выдёргиваем форму из-под рук
+        if (!modalOpen && !typing) route();
       }, 500);
     });
   } catch (e) {

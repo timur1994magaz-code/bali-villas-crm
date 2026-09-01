@@ -387,3 +387,20 @@ code{background:var(--bg);border:1px solid var(--line-soft);border-radius:5px;pa
 .base-rejected{font-size:12px;color:var(--danger);white-space:nowrap}
 .base-row-off td{opacity:.55}
 .base-row-off:hover td{opacity:1}
+
+/* галочка «написали» и заметка в базе */
+.base-written{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--txt-mute);
+  cursor:pointer;white-space:nowrap;margin-bottom:6px;user-select:none}
+.base-written input{accent-color:var(--acc);width:15px;height:15px;cursor:pointer;margin:0}
+.base-written:hover{color:var(--txt-dim)}
+.base-written.on{color:var(--acc)}
+.base-row-written td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+.base-why{max-width:250px}
+.base-note-input{
+  display:block;width:100%;margin-top:6px;padding:5px 8px;font-family:inherit;font-size:12px;
+  background:var(--bg-2);color:var(--txt);border:1px solid var(--line-soft);border-radius:7px;
+  resize:vertical;min-height:28px;line-height:1.35;
+}
+.base-note-input:hover{border-color:var(--line)}
+.base-note-input:focus{outline:none;border-color:var(--acc);min-height:64px;background:var(--panel)}
+.base-note-input::placeholder{color:var(--txt-mute);opacity:.7}
