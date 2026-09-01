@@ -12,6 +12,7 @@ import { renderClientsList, renderClientCard } from './views/clients.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderSettings } from './views/settings.js';
 import { renderBase } from './views/base.js';
+import { renderTasks, taskForm } from './views/tasks.js';
 import { bytes, esc, today, addDays } from './util.js';
 import { clearCloudConfig } from './config.js';
 
@@ -22,7 +23,7 @@ const titleEl = document.getElementById('page-title');
 const TITLES = {
   dashboard: 'Дашборд', villas: 'Виллы', search: 'Подбор виллы под запрос',
   calendar: 'Календарь занятости', clients: 'Клиенты', settings: 'Настройки',
-  base: 'База собственников',
+  base: 'База собственников', tasks: 'Задачи',
 };
 
 let currentUser = null;
@@ -52,6 +53,7 @@ async function route() {
     if (page === 'client') return renderClientCard(view, actions, id);
     if (page === 'settings') return renderSettings(view, actions);
     if (page === 'base') return renderBase(view, actions);
+    if (page === 'tasks') return renderTasks(view, actions);
     return renderDashboard(view);
   } catch (e) {
     console.error(e);
@@ -182,6 +184,8 @@ S.onChange(() => updateFooter());
 document.getElementById('btn-menu').onclick = () =>
   document.querySelector('.sidebar').classList.toggle('open');
 document.getElementById('btn-quick-villa').onclick = () => villaForm(S.emptyVilla());
+document.getElementById('btn-quick-task').onclick = () =>
+  taskForm(S.emptyTask(), () => window.dispatchEvent(new Event('data-changed')));
 document.getElementById('btn-quick-booking').onclick = () => {
   if (!S.state.villas.length) return toast('Сначала добавьте виллу', true);
   bookingForm(S.emptyBooking(S.state.villas[0].id, today(), addDays(today(), 7)),

@@ -62,11 +62,11 @@ db.exec(`
 
 export const uid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
-export const TABLES = ['villas', 'bookings', 'clients'];
+export const TABLES = ['villas', 'bookings', 'clients', 'tasks'];
 
 /* ---------- Записи ---------- */
 export function allDocs() {
-  const out = { villas: [], bookings: [], clients: [] };
+  const out = Object.fromEntries(TABLES.map((t) => [t, []]));
   for (const r of db.prepare('select tbl, doc from docs').all()) {
     if (out[r.tbl]) out[r.tbl].push(JSON.parse(r.doc));
   }

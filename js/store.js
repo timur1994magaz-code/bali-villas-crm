@@ -3,16 +3,17 @@ import * as db from './db.js';
 import * as data from './data.js';
 import { ymd, overlaps, num, daysBetween, today } from './util.js';
 
-export const state = { villas: [], bookings: [], clients: [], settings: {} };
+export const state = { villas: [], bookings: [], clients: [], tasks: [], settings: {} };
 const listeners = new Set();
 export function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 function emit() { listeners.forEach((f) => f()); }
 
 export async function load() {
-  const { villas, bookings, clients, settings } = await data.loadAll();
+  const { villas, bookings, clients, tasks, settings } = await data.loadAll();
   state.villas = villas.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
   state.bookings = bookings.sort((a, b) => String(a.dateFrom).localeCompare(String(b.dateFrom)));
   state.clients = clients.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
+  state.tasks = (tasks || []).sort(byDue);
   state.settings = settings || {};
   state.settings.currency = 'IDR';   // единственная валюта
   emit();
@@ -21,6 +22,7 @@ export async function load() {
 export const villa = (id) => state.villas.find((v) => v.id === id) || null;
 export const client = (id) => state.clients.find((c) => c.id === id) || null;
 export const booking = (id) => state.bookings.find((b) => b.id === id) || null;
+export const task = (id) => state.tasks.find((t) => t.id === id) || null;
 
 // ===== Виллы =====
 export function emptyVilla() {
@@ -46,6 +48,9 @@ export async function deleteVilla(id) {
   const bs = state.bookings.filter((b) => b.villaId === id);
   for (const b of bs) { await data.removeFilesOf('booking', b.id); await data.delRow('bookings', b.id); }
   await data.removeFilesOf('villa', id);
+  for (const t of state.tasks.filter((x) => x.villaId === id)) {
+    await data.putRow('tasks', { ...t, villaId: '' });
+  }
   await data.delRow('villas', id);
   await load();
 }
@@ -71,6 +76,9 @@ export async function deleteClient(id) {
   await data.removeFilesOf('client', id);
   for (const b of state.bookings.filter((b) => b.clientId === id)) {
     b.clientId = ''; await data.putRow('bookings', b);
+  }
+  for (const t of state.tasks.filter((t) => t.clientId === id)) {
+    await data.putRow('tasks', { ...t, clientId: '' });
   }
   await data.delRow('clients', id);
   await load();
@@ -160,6 +168,66 @@ export async function setSetting(key, value) {
   await data.putRow('settings', { key, value });
   state.settings[key] = value;
   emit();
+}
+
+// ===== Задачи =====
+// Тип задачи задаёт только подпись и значок — логика у всех одна.
+export const TASK_KINDS = {
+  call:  { label: 'Звонок', icon: '📞' },
+  write: { label: 'Написать', icon: '✍️' },
+  meet:  { label: 'Встреча', icon: '🤝' },
+  pay:   { label: 'Оплата', icon: '💰' },
+  other: { label: 'Другое', icon: '📌' },
+};
+
+// без срока — в самый конец списка, иначе такие задачи всплывали бы над просроченными
+function byDue(a, b) {
+  if (!a.due !== !b.due) return a.due ? -1 : 1;
+  return String(a.due || '').localeCompare(String(b.due || ''))
+      || String(a.dueTime || '').localeCompare(String(b.dueTime || ''));
+}
+
+export function emptyTask(patch = {}) {
+  return {
+    id: db.uid(), title: '', note: '', kind: 'call',
+    due: today(), dueTime: '', done: false, doneAt: '',
+    clientId: '', villaId: '', bookingId: '', assignee: '',
+    createdAt: new Date().toISOString(),
+    ...patch,
+  };
+}
+export async function saveTask(t) {
+  t.updatedAt = new Date().toISOString();
+  if (!t.createdAt) t.createdAt = t.updatedAt;
+  await data.putRow('tasks', t);
+  await load();
+  return t;
+}
+export async function deleteTask(id) {
+  await data.delRow('tasks', id);
+  await load();
+}
+export async function toggleTask(id, done) {
+  const t = task(id);
+  if (!t) return null;
+  return saveTask({ ...t, done: !!done, doneAt: done ? new Date().toISOString() : '' });
+}
+
+export const openTasks = () => state.tasks.filter((t) => !t.done);
+export const tasksOfClient = (id) => state.tasks.filter((t) => t.clientId === id).sort(byDue);
+export const tasksOfVilla = (id) => state.tasks.filter((t) => t.villaId === id).sort(byDue);
+export const isOverdue = (t) => !t.done && t.due && t.due < today();
+export const isToday = (t) => !t.done && t.due === today();
+/** Сводка для дашборда: сколько горит, сколько на сегодня, сколько впереди. */
+export function taskCounts() {
+  const open = openTasks();
+  return {
+    overdue: open.filter(isOverdue).length,
+    today: open.filter(isToday).length,
+    later: open.filter((t) => t.due && t.due > today()).length,
+    noDate: open.filter((t) => !t.due).length,
+    open: open.length,
+  };
 }
 
 // ===== Экспорт / импорт живёт в backup.js (папка / ZIP / JSON) =====

@@ -15,8 +15,8 @@ export async function localCounts() {
 }
 
 export async function localToRemote(onProgress = () => {}) {
-  const [villas, bookings, clients, settings] = await Promise.all([
-    db.all('villas'), db.all('bookings'), db.all('clients'), db.all('settings'),
+  const [villas, bookings, clients, tasks, settings] = await Promise.all([
+    db.all('villas'), db.all('bookings'), db.all('clients'), db.all('tasks'), db.all('settings'),
   ]);
   const files = [];
   await db.eachFile((f) => files.push(f));
@@ -28,6 +28,7 @@ export async function localToRemote(onProgress = () => {}) {
   for (const v of villas) { await data.putRow('villas', v); tick(`Вилла: ${v.name || v.id}`); }
   for (const c of clients) { await data.putRow('clients', c); tick(`Клиент: ${c.name || c.id}`); }
   for (const b of bookings) { await data.putRow('bookings', b); tick('Бронь'); }
+  for (const t of tasks) { await data.putRow('tasks', t); tick('Задача'); }
   for (const s of settings) { await data.putRow('settings', s); tick('Настройка'); }
 
   let uploaded = 0, failed = 0;

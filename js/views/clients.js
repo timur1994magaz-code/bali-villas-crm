@@ -3,6 +3,7 @@ import * as S from '../store.js';
 import { modal, closeModal, field, formData, toast, confirmDialog } from '../ui.js';
 import { renderDocs } from '../files-ui.js';
 import { bookingForm, bookingCard, plural } from '../booking.js';
+import { taskRow, bindTaskList, taskForm } from './tasks.js';
 import {
   esc, money, moneyShort, num, STATUS, fmtRange, fmtDate, phoneHref, waHref, tgHref, sortBy, today,
 } from '../util.js';
@@ -119,6 +120,7 @@ export function renderClientCard(view, actions, id) {
       </div>
       <div class="panel" id="c-docs"></div>
     </div>
+    <div class="panel" id="c-tasks"></div>
     <div class="panel">
       <div class="panel-head"><h3>🗓️ История проживаний</h3></div>
       ${bs.length ? `<div class="table-wrap"><table>
@@ -137,6 +139,24 @@ export function renderClientCard(view, actions, id) {
           </tr>`;
         }).join('')}</tbody></table></div>` : '<div class="mute">Проживаний пока нет.</div>'}
     </div>`;
+  const drawTasks = () => {
+    const panel = view.querySelector('#c-tasks');
+    if (!panel) return;
+    const list = S.tasksOfClient(c.id);
+    const open = list.filter((x) => !x.done).length;
+    panel.innerHTML = `
+      <div class="panel-head"><h3>✅ Задачи${open ? ` <span class="mute">· ${open} в работе</span>` : ''}</h3>
+        <div class="spacer"></div>
+        <button class="btn btn-sm" id="c-task-add">+ Задача</button></div>
+      ${list.length
+        ? `<div class="task-list">${list.map((x) => taskRow(x, { compact: true })).join('')}</div>`
+        : '<div class="mute">Задач по клиенту нет.</div>'}`;
+    bindTaskList(panel, drawTasks);
+    panel.querySelector('#c-task-add').onclick = () =>
+      taskForm(S.emptyTask({ clientId: c.id, title: '' }), drawTasks);
+  };
+  drawTasks();
+
   renderDocs(view.querySelector('#c-docs'), 'client', c.id,
     { title: '📁 Документы: договор, паспорт, виза' });
 

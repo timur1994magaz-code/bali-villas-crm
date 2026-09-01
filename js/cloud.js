@@ -2,7 +2,7 @@
 import { cloudConfig, SUPABASE_JS } from './config.js';
 
 const BUCKET = 'villa-files';
-const TABLE = { villas: 'villas', bookings: 'bookings', clients: 'clients' };
+const TABLE = { villas: 'villas', bookings: 'bookings', clients: 'clients', tasks: 'tasks' };
 const SIGNED_TTL = 60 * 60; // ссылки на файлы живут час
 
 let _client = null;
@@ -73,21 +73,25 @@ function check(error, what) {
 }
 export async function loadAll() {
   const sb = await getClient();
-  const [v, b, c, s] = await Promise.all([
+  const [v, b, c, s, t] = await Promise.all([
     sb.from('villas').select('id,doc'),
     sb.from('bookings').select('id,doc'),
     sb.from('clients').select('id,doc'),
     sb.from('app_settings').select('key,value'),
+    sb.from('tasks').select('id,doc'),
   ]);
   check(v.error, 'Загрузка вилл');
   check(b.error, 'Загрузка броней');
   check(c.error, 'Загрузка клиентов');
   check(s.error, 'Загрузка настроек');
   const unwrap = (rows) => (rows || []).map((r) => ({ ...r.doc, id: r.id }));
+  // задачи появились позже: в старой базе таблицы может не быть — это не повод падать
+  if (t.error) console.warn('Задачи недоступны, добавьте таблицу tasks: ' + t.error.message);
   return {
     villas: unwrap(v.data),
     bookings: unwrap(b.data),
     clients: unwrap(c.data),
+    tasks: t.error ? [] : unwrap(t.data),
     settings: Object.fromEntries((s.data || []).map((r) => [r.key, r.value])),
   };
 }
@@ -111,7 +115,7 @@ export async function delRow(table, id) {
 }
 export async function clearAll() {
   const sb = await getClient();
-  for (const p of ['files', 'bookings', 'clients', 'villas']) {
+  for (const p of ['files', 'bookings', 'tasks', 'clients', 'villas']) {
     const { error } = await sb.from(p).delete().neq('id', '__never__');
     check(error, 'Очистка ' + p);
   }

@@ -1,7 +1,7 @@
 // ===== IndexedDB: виллы, брони, клиенты, файлы =====
 const DB_NAME = 'bali-villas-crm';
-const DB_VERSION = 2;
-export const STORES = ['villas', 'bookings', 'clients', 'files', 'settings'];
+const DB_VERSION = 3;
+export const STORES = ['villas', 'bookings', 'clients', 'tasks', 'files', 'settings'];
 
 let _db = null;
 
@@ -33,6 +33,11 @@ export function open() {
       // индекс для быстрой обложки и порядка фото без чтения всех блобов
       if (!filesStore.indexNames.contains('ownerKindSort')) {
         filesStore.createIndex('ownerKindSort', ['ownerType', 'ownerId', 'kind', 'sort']);
+      }
+      if (!db.objectStoreNames.contains('tasks')) {
+        const t = db.createObjectStore('tasks', { keyPath: 'id' });
+        t.createIndex('due', 'due');
+        t.createIndex('clientId', 'clientId');
       }
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'key' });

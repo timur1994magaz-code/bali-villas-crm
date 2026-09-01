@@ -76,7 +76,8 @@ export async function signOut() { await req('api/logout', { method: 'POST' }); }
 /* ---------- Записи ---------- */
 export async function loadAll() {
   const d = await req('api/data');
-  return { villas: d.villas || [], bookings: d.bookings || [], clients: d.clients || [], settings: d.settings || {} };
+  return { villas: d.villas || [], bookings: d.bookings || [], clients: d.clients || [],
+           tasks: d.tasks || [], settings: d.settings || {} };
 }
 export async function putRow(table, row) {
   if (table === 'settings') {

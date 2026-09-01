@@ -404,3 +404,34 @@ code{background:var(--bg);border:1px solid var(--line-soft);border-radius:5px;pa
 .base-note-input:hover{border-color:var(--line)}
 .base-note-input:focus{outline:none;border-color:var(--acc);min-height:64px;background:var(--panel)}
 .base-note-input::placeholder{color:var(--txt-mute);opacity:.7}
+
+/* ===== Задачи ===== */
+.task-summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.task-list{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);
+  border:1px solid var(--line-soft);border-radius:var(--radius);overflow:hidden}
+.task-item{display:flex;align-items:flex-start;gap:12px;padding:11px 14px;background:var(--panel)}
+.task-item:hover{background:var(--panel-2)}
+.task-item.is-done .task-title{text-decoration:line-through;color:var(--txt-mute)}
+.task-item.is-done{opacity:.6}
+.task-item.is-done:hover{opacity:1}
+.task-check{display:flex;align-items:center;padding-top:2px;cursor:pointer}
+.task-check input{width:17px;height:17px;accent-color:var(--acc);cursor:pointer;margin:0}
+.task-main{flex:1;min-width:0}
+.task-title{font-weight:550;line-height:1.35;overflow-wrap:anywhere}
+.task-note{font-size:12.5px;color:var(--txt-dim);margin-top:3px;white-space:pre-wrap;overflow-wrap:anywhere}
+.task-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;font-size:12px}
+.task-side{flex:0 0 auto;text-align:right;display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+.task-due{font-size:12px;color:var(--txt-dim);white-space:nowrap}
+.task-due.due-over{color:var(--danger);font-weight:600}
+.task-due.due-today{color:var(--warn);font-weight:600}
+.task-due.due-soon{color:var(--info)}
+.task-due.due-none,.task-due.due-done{color:var(--txt-mute)}
+.task-acts{flex:0 0 auto;display:flex;gap:2px;opacity:0;transition:opacity .15s}
+.task-item:hover .task-acts,.task-item:focus-within .task-acts{opacity:1}
+.stat.clickable{cursor:pointer}
+.stat.clickable:hover{border-color:var(--acc)}
+@media (max-width:720px){
+  .task-item{flex-wrap:wrap}
+  .task-side{width:100%;align-items:flex-start;text-align:left}
+  .task-acts{opacity:1}
+}

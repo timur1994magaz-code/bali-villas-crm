@@ -39,7 +39,7 @@ export async function buildManifest() {
   }
   const manifest = {
     app: 'bali-villas-crm', version: 2, exportedAt: new Date().toISOString(),
-    villas: S.state.villas, bookings: S.state.bookings, clients: S.state.clients,
+    villas: S.state.villas, bookings: S.state.bookings, clients: S.state.clients, tasks: S.state.tasks,
     settings: Object.entries(S.state.settings).map(([key, value]) => ({ key, value })),
     files: meta,
   };
@@ -151,6 +151,7 @@ export async function applyBackup({ data: backup, getBlob }, { replace = false, 
   for (const v of backup.villas || []) await data.putRow('villas', v);
   for (const b of backup.bookings || []) await data.putRow('bookings', b);
   for (const c of backup.clients || []) await data.putRow('clients', c);
+  for (const t of backup.tasks || []) await data.putRow('tasks', t);
   for (const st of backup.settings || []) await data.putRow('settings', st);
 
   const files = backup.files || [];
@@ -188,7 +189,7 @@ function dataUrlToBlob(url) {   // поддержка старых JSON-бэка
 export async function exportDataOnly() {
   const payload = {
     app: 'bali-villas-crm', version: 2, exportedAt: new Date().toISOString(),
-    villas: S.state.villas, bookings: S.state.bookings, clients: S.state.clients,
+    villas: S.state.villas, bookings: S.state.bookings, clients: S.state.clients, tasks: S.state.tasks,
     settings: Object.entries(S.state.settings).map(([key, value]) => ({ key, value })),
     files: [],
   };

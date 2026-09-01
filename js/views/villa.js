@@ -4,6 +4,7 @@ import { modal, closeModal, field, formData, toast, confirmDialog } from '../ui.
 import { renderPhotos, renderDocs, uploadPhotos } from '../files-ui.js';
 import * as data from '../data.js';
 import { bookingForm, bookingCard, plural } from '../booking.js';
+import { taskRow, bindTaskList, taskForm } from './tasks.js';
 import {
   esc, money, moneyShort, num, PERIODS, STATUS, fmtDate, fmtDateShort, fmtRange,
   parseCoords, mapEmbedUrl, mapLinkUrl, phoneHref, waHref, today, addMonths,
@@ -88,6 +89,8 @@ export async function renderVillaCard(view, actions, id) {
         <div>${esc((S.client(nowB.clientId) || {}).name || 'Без клиента')} · ${fmtRange(nowB.dateFrom, nowB.dateTo)}</div>
       </div>` : ''}
 
+      <div class="panel" id="ov-tasks"></div>
+
       <div class="panel" id="ov-photos"></div>
 
       <div class="grid-2">
@@ -139,7 +142,26 @@ export async function renderVillaCard(view, actions, id) {
       </div>`;
     const ob = body.querySelector('[data-open-b]');
     if (ob) ob.onclick = () => bookingCard(ob.dataset.openB, { onChanged: rerender });
+    drawVillaTasks();
     drawPhotoStrip();
+  }
+
+  /** Задачи по вилле: чаще всего это «дожать собственника». */
+  function drawVillaTasks() {
+    const box = body.querySelector('#ov-tasks');
+    if (!box) return;
+    const list = S.tasksOfVilla(v.id);
+    const open = list.filter((x) => !x.done).length;
+    box.innerHTML = `
+      <div class="panel-head"><h3>✅ Задачи${open ? ` <span class="mute">· ${open} в работе</span>` : ''}</h3>
+        <div class="spacer"></div>
+        <button class="btn btn-sm" data-task-add>+ Задача</button></div>
+      ${list.length
+        ? `<div class="task-list">${list.map((x) => taskRow(x, { compact: true })).join('')}</div>`
+        : '<div class="mute">Задач по вилле нет.</div>'}`;
+    bindTaskList(box, drawVillaTasks);
+    box.querySelector('[data-task-add]').onclick = () =>
+      taskForm(S.emptyTask({ villaId: v.id }), drawVillaTasks);
   }
 
   /** Лента фото в обзоре: видно сразу, грузится здесь же. */

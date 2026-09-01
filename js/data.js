@@ -59,10 +59,10 @@ export async function resolveMapLink(url) {
 export async function loadAll() {
   if (isServer()) return selfhost.loadAll();
   if (isCloud()) return cloud.loadAll();
-  const [villas, bookings, clients, settings] = await Promise.all([
-    db.all('villas'), db.all('bookings'), db.all('clients'), db.all('settings'),
+  const [villas, bookings, clients, tasks, settings] = await Promise.all([
+    db.all('villas'), db.all('bookings'), db.all('clients'), db.all('tasks'), db.all('settings'),
   ]);
-  return { villas, bookings, clients, settings: Object.fromEntries(settings.map((s) => [s.key, s.value])) };
+  return { villas, bookings, clients, tasks, settings: Object.fromEntries(settings.map((s) => [s.key, s.value])) };
 }
 export async function putRow(table, row) {
   if (isServer()) return selfhost.putRow(table, row);
