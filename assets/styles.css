@@ -456,3 +456,24 @@ code{background:var(--bg);border:1px solid var(--line-soft);border-radius:5px;pa
 .fact-in:focus{outline:none;border-color:var(--acc);background:var(--panel)}
 .fact-in::placeholder{color:var(--txt-mute);opacity:.6}
 .base-fact .file-sub{margin-top:3px}
+
+/* база: таблица должна помещаться в экран, поэтому плотнее обычной */
+#base-body table td{padding:9px 10px}
+#base-body table th{padding:9px 10px}
+.base-villa b{line-height:1.25}
+.base-map{font-size:12px;color:var(--txt-mute);text-decoration:none;margin-left:4px}
+.base-map:hover{color:var(--acc)}
+.chip-link.ic{padding:4px 7px;font-size:13px;line-height:1}
+.base-why{max-width:200px}
+.base-why .file-sub{display:block;max-height:34px;overflow:hidden}
+
+/* на ноутбуках потеснее, чтобы таблица базы не уезжала за экран */
+@media (max-width:1330px){
+  #base-body table td,#base-body table th{padding:8px 7px}
+  .base-why{max-width:150px}
+  .fact-in{width:52px}
+  .base-fact{min-width:62px}
+  .base-written span{display:none}
+  .base-written::after{content:'✍️';font-size:12px}
+  .base-written.on::after{content:attr(data-short)}
+}

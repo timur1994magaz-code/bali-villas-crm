@@ -13,10 +13,10 @@ const FACTS_KEY = 'baseFacts';       // комнаты и цена, которы
 
 // вердикт → подпись и цветовой вариант бейджа
 const VERDICTS = {
-  'СОБСТВЕННИК (кандидат)': { label: 'Собственник', cls: 'b-occupied', rank: 0 },
-  'вероятно собственник':   { label: 'Вероятно собственник', cls: 'b-option', rank: 1 },
-  'не определено':          { label: 'Не определено', cls: 'b-off', rank: 2 },
-  'АГЕНТ/УК':               { label: 'Агент / УК', cls: 'b-blocked', rank: 3 },
+  'СОБСТВЕННИК (кандидат)': { label: 'Собственник', short: 'Собственник', cls: 'b-occupied', rank: 0 },
+  'вероятно собственник':   { label: 'Вероятно собственник', short: 'Вероятно', cls: 'b-option', rank: 1 },
+  'не определено':          { label: 'Не определено', short: 'Не ясно', cls: 'b-off', rank: 2 },
+  'АГЕНТ/УК':               { label: 'Агент / УК', short: 'Агент', cls: 'b-blocked', rank: 3 },
 };
 const OWNERISH = ['СОБСТВЕННИК (кандидат)', 'вероятно собственник'];
 
@@ -220,21 +220,21 @@ export async function renderBase(view, actions) {
     body.className = 'table-wrap';
     body.innerHTML = `<table>
       <thead><tr>
-        <th>Вилла</th><th>Район</th><th>Вердикт</th><th>Контакты</th>
-        <th class="num">Комнат</th><th class="num">Цена, мес.</th>
-        <th>Источник</th><th>Почему так размечено</th><th></th>
+        <th>Вилла</th><th>Вердикт</th><th>Контакты</th>
+        <th class="num">Комнат</th><th class="num">Цена</th>
+        <th>Заметка</th><th></th>
       </tr></thead>
       <tbody>${show.map((r, i) => {
         const v = VERDICTS[r.d] || { label: r.d, cls: 'b-off' };
         const meta = [r.c, r.bd && r.bd + ' сп.', r.rt && '★ ' + r.rt].filter(Boolean).join(' · ');
         const links = [];
-        if (r.p) links.push(`<a class="chip-link" href="${waHref(r.p)}" target="_blank" rel="noopener">WhatsApp</a>`);
-        if (r.i) links.push(`<a class="chip-link" href="${esc(r.i)}" target="_blank" rel="noopener">Instagram</a>`);
-        if (r.w) links.push(`<a class="chip-link" href="${esc(r.w)}" target="_blank" rel="noopener">Сайт</a>`);
+        if (r.p) links.push(`<a class="chip-link ic" href="${waHref(r.p)}" target="_blank" rel="noopener" title="WhatsApp">💬</a>`);
+        if (r.i) links.push(`<a class="chip-link ic" href="${esc(r.i)}" target="_blank" rel="noopener" title="Instagram">📷</a>`);
+        if (r.w) links.push(`<a class="chip-link ic" href="${esc(r.w)}" target="_blank" rel="noopener" title="Сайт виллы">🌐</a>`);
         const rec = rj[r.k];
         const w = wr[r.k];
         const f = ft[r.k] || {};
-        const mark = `<label class="base-written${w ? ' on' : ''}" title="Отметить, что мы написали">
+        const mark = `<label class="base-written${w ? ' on' : ''}" title="${w ? 'Написали ' + esc(fmtDateShort(w.at)) : 'Отметить, что мы написали'}" data-short="${w ? esc(fmtDateShort(w.at)) : ''}">
             <input type="checkbox" data-written="${i}"${w ? ' checked' : ''}>
             <span>${w ? `Написали · ${esc(fmtDateShort(w.at))}` : 'Написали'}</span>
           </label>`;
@@ -252,9 +252,14 @@ export async function renderBase(view, actions) {
           </div>`;
         }
         return `<tr class="${rec ? 'base-row-off' : ''}${w && !rec ? ' base-row-written' : ''}">
-          <td><b>${esc(r.n)}</b>${meta ? `<div class="file-sub">${esc(meta)}</div>` : ''}</td>
-          <td>${esc(r.a)}${r.v ? `<div class="file-sub">${esc(r.v)}</div>` : ''}</td>
-          <td><span class="badge ${v.cls}">${esc(v.label)}</span></td>
+          <td class="base-villa">
+            <b>${esc(r.n)}</b>
+            <a class="base-map" href="https://www.google.com/maps/place/?q=place_id:${esc(r.k)}"
+               target="_blank" rel="noopener" title="Открыть в Google Maps">↗</a>
+            <div class="file-sub">${esc(r.a)}${r.v ? ' · ' + esc(r.v) : ''}</div>
+            ${meta ? `<div class="file-sub">${esc(meta)}</div>` : ''}
+          </td>
+          <td><span class="badge ${v.cls}" title="${esc(v.label)}">${esc(v.short || v.label)}</span></td>
           <td>
             ${r.p ? `<a href="${phoneHref(r.p)}">${esc(r.p)}</a>` : '<span class="file-sub">—</span>'}
             ${r.e ? `<div class="file-sub"><a href="mailto:${esc(r.e)}">${esc(r.e)}</a></div>` : ''}
@@ -270,7 +275,6 @@ export async function renderBase(view, actions) {
               value="${f.price ? Math.round(f.price / 1e6) : ''}" placeholder="млн">
             ${f.price ? `<div class="file-sub">${esc(moneyShort(f.price, 'IDR'))}</div>` : ''}
           </td>
-          <td><a href="https://www.google.com/maps/place/?q=place_id:${esc(r.k)}" target="_blank" rel="noopener">Google Maps ↗</a></td>
           <td class="base-why">
             ${r.y ? `<span class="file-sub">${esc(r.y)}</span>` : ''}
             <textarea class="base-note-input" rows="1" data-note="${i}"
