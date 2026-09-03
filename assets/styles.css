@@ -435,3 +435,24 @@ code{background:var(--bg);border:1px solid var(--line-soft);border-radius:5px;pa
   .task-side{width:100%;align-items:flex-start;text-align:left}
   .task-acts{opacity:1}
 }
+
+/* фильтры и правки прямо в базе */
+.base-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.base-fsep{width:1px;height:20px;background:var(--line)}
+.base-f{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--txt-mute);white-space:nowrap}
+.base-f input,.base-f select{
+  width:76px;padding:5px 7px;font:inherit;font-size:12.5px;background:var(--panel-2);color:var(--txt);
+  border:1px solid var(--line);border-radius:7px;
+}
+.base-f select{width:auto}
+.base-f input:focus,.base-f select:focus{outline:none;border-color:var(--acc)}
+.base-fact{min-width:82px}
+.fact-in{
+  width:64px;padding:5px 7px;font:inherit;font-size:12.5px;text-align:right;
+  background:var(--bg-2);color:var(--txt);border:1px solid var(--line-soft);border-radius:7px;
+  font-variant-numeric:tabular-nums;
+}
+.fact-in:hover{border-color:var(--line)}
+.fact-in:focus{outline:none;border-color:var(--acc);background:var(--panel)}
+.fact-in::placeholder{color:var(--txt-mute);opacity:.6}
+.base-fact .file-sub{margin-top:3px}

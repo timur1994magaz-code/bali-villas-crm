@@ -1,7 +1,7 @@
 // ===== База собственников: контакты вилл, собранные из Google Maps и сайтов вилл =====
 import * as S from '../store.js';
 import * as data from '../data.js';
-import { esc, phoneHref, waHref, download, fmtDateShort } from '../util.js';
+import { esc, phoneHref, waHref, download, fmtDateShort, parseAmount, moneyShort } from '../util.js';
 import { toast } from '../ui.js';
 import { villaForm } from './villa.js';
 
@@ -9,6 +9,7 @@ const AREAS = ['Чангу', 'Переренан', 'Сесех', 'Чемаги',
 const REJECTS_KEY = 'baseRejects';   // с кем не сложилось
 const WRITTEN_KEY = 'baseWritten';   // кому уже написали
 const NOTES_KEY = 'baseNotes';       // наши заметки поверх автоматического обоснования
+const FACTS_KEY = 'baseFacts';       // комнаты и цена, которые проставляем руками
 
 // вердикт → подпись и цветовой вариант бейджа
 const VERDICTS = {
@@ -25,6 +26,7 @@ let me = null;      // кто работает: подписываем отка�
 // состояние фильтров держим вне рендера: живая синхронизация с другим
 // сотрудником перерисовывает раздел, и иначе слетал бы поиск и выбранный район
 let q = '', group = 'owners', areas = new Set(), limit = 100, onlyUnwritten = false;
+let roomsMin = '', priceMin = '', priceMax = '', sort = 'best';
 
 async function loadBase() {
   if (cache) return cache;
@@ -37,6 +39,20 @@ async function loadBase() {
 const rejects = () => S.state.settings[REJECTS_KEY] || {};
 const written = () => S.state.settings[WRITTEN_KEY] || {};
 const notes   = () => S.state.settings[NOTES_KEY] || {};
+const facts   = () => S.state.settings[FACTS_KEY] || {};
+
+// комнаты: своё значение важнее того, что подписал Google
+const roomsOf = (r) => {
+  const f = facts()[r.k];
+  const v = f && f.rooms != null && f.rooms !== '' ? f.rooms : r.bd;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+};
+const priceOf = (r) => {
+  const f = facts()[r.k];
+  const n = f && f.price != null && f.price !== '' ? Number(f.price) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
 
 export async function renderBase(view, actions) {
   actions.innerHTML = `
@@ -69,8 +85,25 @@ export async function renderBase(view, actions) {
   view.innerHTML = `
     <div class="base-head">
       <div class="base-chips" id="base-areas"></div>
-      <div class="base-chips">
+      <div class="base-filters">
         <button class="base-chip${onlyUnwritten ? ' active' : ''}" id="base-unwritten">✉️ Кому ещё не писали</button>
+        <span class="base-fsep"></span>
+        <label class="base-f">Комнат от
+          <input type="number" min="0" max="20" step="1" id="f-rooms" value="${esc(roomsMin)}" placeholder="любое"></label>
+        <label class="base-f">Цена, млн Rp от
+          <input type="text" inputmode="decimal" id="f-pmin" value="${esc(priceMin)}" placeholder="—"></label>
+        <label class="base-f">до
+          <input type="text" inputmode="decimal" id="f-pmax" value="${esc(priceMax)}" placeholder="—"></label>
+        <label class="base-f">Сортировка
+          <select id="f-sort">
+            <option value="best">по вердикту</option>
+            <option value="price-asc">цена ↑</option>
+            <option value="price-desc">цена ↓</option>
+            <option value="rooms-asc">комнат ↑</option>
+            <option value="rooms-desc">комнат ↓</option>
+            <option value="name">по названию</option>
+          </select></label>
+        <button class="btn btn-sm" id="f-reset">Сбросить</button>
       </div>
       <div class="base-note" id="base-note"></div>
     </div>
@@ -89,6 +122,18 @@ export async function renderBase(view, actions) {
     };
   });
   actions.querySelector('#base-export').onclick = () => exportCsv(filtered());
+  const fr = view.querySelector('#f-rooms'), fmin = view.querySelector('#f-pmin'),
+        fmax = view.querySelector('#f-pmax'), fs = view.querySelector('#f-sort');
+  fs.value = sort;
+  fr.oninput = () => { roomsMin = fr.value; limit = 100; draw(); };
+  fmin.oninput = () => { priceMin = fmin.value; limit = 100; draw(); };
+  fmax.oninput = () => { priceMax = fmax.value; limit = 100; draw(); };
+  fs.onchange = () => { sort = fs.value; draw(); };
+  view.querySelector('#f-reset').onclick = () => {
+    roomsMin = priceMin = priceMax = ''; sort = 'best';
+    fr.value = fmin.value = fmax.value = ''; fs.value = 'best';
+    limit = 100; draw();
+  };
   view.querySelector('#base-unwritten').onclick = (e) => {
     onlyUnwritten = !onlyUnwritten;
     e.currentTarget.classList.toggle('active', onlyUnwritten);
@@ -122,10 +167,29 @@ export async function renderBase(view, actions) {
     if (onlyUnwritten) { const w = written(); rows = rows.filter((r) => !w[r.k]); }
     if (q) rows = rows.filter((r) =>
       [r.n, r.v, r.p, r.e, r.c].join(' ').toLowerCase().includes(q));
-    return rows.slice().sort((a, b) =>
+
+    // комнаты и цена: строки без значения из фильтра выпадают — иначе
+    // непроставленные виллы засоряли бы подбор
+    const rmin = parseInt(roomsMin, 10);
+    if (Number.isFinite(rmin)) rows = rows.filter((r) => (roomsOf(r) ?? -1) >= rmin);
+    const pmin = parseAmount(priceMin), pmax = parseAmount(priceMax);
+    const mln = (v) => (v == null ? null : v < 1e6 ? v * 1e6 : v);   // «45» = 45 млн
+    if (mln(pmin) != null) rows = rows.filter((r) => (priceOf(r) ?? -1) >= mln(pmin));
+    if (mln(pmax) != null) rows = rows.filter((r) => priceOf(r) != null && priceOf(r) <= mln(pmax));
+
+    const byName = (a, b) => String(a.n).localeCompare(String(b.n), 'ru');
+    // строки без значения всегда в конце, как бы ни сортировали
+    const nulls = (v) => (v == null ? 1 : 0);
+    const cmp = {
+      'price-asc':  (a, b) => nulls(priceOf(a)) - nulls(priceOf(b)) || (priceOf(a) ?? 0) - (priceOf(b) ?? 0) || byName(a, b),
+      'price-desc': (a, b) => nulls(priceOf(a)) - nulls(priceOf(b)) || (priceOf(b) ?? 0) - (priceOf(a) ?? 0) || byName(a, b),
+      'rooms-asc':  (a, b) => nulls(roomsOf(a)) - nulls(roomsOf(b)) || (roomsOf(a) ?? 0) - (roomsOf(b) ?? 0) || byName(a, b),
+      'rooms-desc': (a, b) => nulls(roomsOf(a)) - nulls(roomsOf(b)) || (roomsOf(b) ?? 0) - (roomsOf(a) ?? 0) || byName(a, b),
+      name: byName,
+    }[sort] || ((a, b) =>
       (VERDICTS[a.d]?.rank ?? 9) - (VERDICTS[b.d]?.rank ?? 9) ||
-      (b.e ? 1 : 0) - (a.e ? 1 : 0) ||
-      String(a.n).localeCompare(String(b.n), 'ru'));
+      (b.e ? 1 : 0) - (a.e ? 1 : 0) || byName(a, b));
+    return rows.slice().sort(cmp);
   }
 
   // вилла уже заведена в CRM? сверяем по названию, чтобы не плодить дубли
@@ -133,7 +197,7 @@ export async function renderBase(view, actions) {
     (v.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase());
 
   function draw() {
-    const rj = rejects(), wr = written(), nt = notes();
+    const rj = rejects(), wr = written(), nt = notes(), ft = facts();
     const rjCount = Object.keys(rj).length;
     const wrCount = Object.keys(wr).length;
     const segRejected = actions.querySelector('[data-group="rejected"]');
@@ -157,6 +221,7 @@ export async function renderBase(view, actions) {
     body.innerHTML = `<table>
       <thead><tr>
         <th>Вилла</th><th>Район</th><th>Вердикт</th><th>Контакты</th>
+        <th class="num">Комнат</th><th class="num">Цена, мес.</th>
         <th>Источник</th><th>Почему так размечено</th><th></th>
       </tr></thead>
       <tbody>${show.map((r, i) => {
@@ -168,6 +233,7 @@ export async function renderBase(view, actions) {
         if (r.w) links.push(`<a class="chip-link" href="${esc(r.w)}" target="_blank" rel="noopener">Сайт</a>`);
         const rec = rj[r.k];
         const w = wr[r.k];
+        const f = ft[r.k] || {};
         const mark = `<label class="base-written${w ? ' on' : ''}" title="Отметить, что мы написали">
             <input type="checkbox" data-written="${i}"${w ? ' checked' : ''}>
             <span>${w ? `Написали · ${esc(fmtDateShort(w.at))}` : 'Написали'}</span>
@@ -193,6 +259,16 @@ export async function renderBase(view, actions) {
             ${r.p ? `<a href="${phoneHref(r.p)}">${esc(r.p)}</a>` : '<span class="file-sub">—</span>'}
             ${r.e ? `<div class="file-sub"><a href="mailto:${esc(r.e)}">${esc(r.e)}</a></div>` : ''}
             ${links.length ? `<div class="chip-links" style="margin-top:6px">${links.join('')}</div>` : ''}
+          </td>
+          <td class="num base-fact">
+            <input type="number" min="0" max="30" step="1" class="fact-in" data-rooms="${i}"
+              value="${esc(f.rooms ?? '')}" placeholder="${esc(r.bd || '—')}">
+            ${(f.rooms == null || f.rooms === '') && r.bd ? '<div class="file-sub">из Google</div>' : ''}
+          </td>
+          <td class="num base-fact">
+            <input type="text" inputmode="decimal" class="fact-in" data-price="${i}"
+              value="${f.price ? Math.round(f.price / 1e6) : ''}" placeholder="млн">
+            ${f.price ? `<div class="file-sub">${esc(moneyShort(f.price, 'IDR'))}</div>` : ''}
           </td>
           <td><a href="https://www.google.com/maps/place/?q=place_id:${esc(r.k)}" target="_blank" rel="noopener">Google Maps ↗</a></td>
           <td class="base-why">
@@ -220,6 +296,10 @@ export async function renderBase(view, actions) {
       if (w) return setWritten(show[Number(w.dataset.written)], w.checked);
       const n = e.target.closest('[data-note]');
       if (n) return saveNote(show[Number(n.dataset.note)], n.value);
+      const rm = e.target.closest('[data-rooms]');
+      if (rm) return saveFact(show[Number(rm.dataset.rooms)], 'rooms', rm.value);
+      const pr = e.target.closest('[data-price]');
+      if (pr) return saveFact(show[Number(pr.dataset.price)], 'price', pr.value);
     };
   }
 
@@ -269,6 +349,34 @@ export async function renderBase(view, actions) {
     }
   }
 
+  // комнаты и цена: пишем в общие настройки, как заметки и отказы.
+  // цену вводим в миллионах — «45» превращается в 45 000 000 Rp
+  async function saveFact(r, key, raw) {
+    if (!r) return;
+    const cur = facts();
+    const prev = cur[r.k] || {};
+    let val;
+    if (key === 'rooms') {
+      const n = parseInt(raw, 10);
+      val = Number.isFinite(n) && n >= 0 ? String(n) : '';
+    } else {
+      const n = parseAmount(raw);
+      val = n == null || n <= 0 ? '' : (n < 1e6 ? n * 1e6 : n);
+    }
+    if ((prev[key] ?? '') === val) return;
+    const row = { ...prev, [key]: val };
+    if (row.rooms === '') delete row.rooms;
+    if (row.price === '') delete row.price;
+    const next = { ...cur };
+    if (!Object.keys(row).length) delete next[r.k]; else next[r.k] = row;
+    try {
+      await S.setSetting(FACTS_KEY, next);
+      draw();
+    } catch (e) {
+      toast('Не удалось сохранить: ' + e.message, true);
+    }
+  }
+
   // переносим строку базы в карточку виллы — форма открывается уже заполненной
   function toCrm(r) {
     if (!r) return;
@@ -276,7 +384,9 @@ export async function renderBase(view, actions) {
       ...S.emptyVilla(),
       name: r.n || '',
       area: [r.a, r.v].filter(Boolean).join(', '),
-      bedrooms: r.bd || '',
+      bedrooms: String(roomsOf(r) ?? r.bd ?? ''),
+      ownerPrice: priceOf(r) ? String(priceOf(r)) : '',
+      ownerPeriod: 'month',
       bathrooms: r.ba || '',
       ownerPhone: r.p || '',
       ownerWhatsapp: r.p || '',
@@ -299,9 +409,11 @@ export async function renderBase(view, actions) {
                   ['Телефон', 'p'], ['Email', 'e'], ['Instagram', 'i'], ['Сайт', 'w'],
                   ['Категория', 'c'], ['Спальни', 'bd'], ['Рейтинг', 'rt'], ['Обоснование', 'y']];
     const q1 = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
-    const extra = ['Написали', 'Заметка', 'Отказ'];
+    const extra = ['Комнат', 'Цена в месяц, Rp', 'Написали', 'Заметка', 'Отказ'];
     const csv = [cols.map((c) => q1(c[0])).concat(extra.map(q1)).join(';')]
       .concat(rows.map((r) => cols.map((c) => q1(r[c[1]])).concat([
+        q1(roomsOf(r) ?? ''),
+        q1(priceOf(r) ?? ''),
         q1(wr[r.k] ? wr[r.k].at || 'да' : ''),
         q1(nt[r.k] || ''),
         q1(rj[r.k] ? rj[r.k].at || 'да' : ''),
