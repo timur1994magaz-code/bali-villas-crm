@@ -129,6 +129,40 @@ function showLogin(message = '') {
 
 /* ---------- Живое обновление у второго сотрудника ---------- */
 let reloadTimer = null;
+/**
+ * Перерисовка страницы с возвратом на то же место.
+ * Живое обновление приходит и на собственные изменения: без этого нажатие
+ * «Отказ» в длинной базе уносило человека в начало списка.
+ * Содержимое дорисовывается асинхронно, поэтому позицию возвращаем несколько
+ * кадров подряд — и сразу отступаем, если человек начал прокручивать сам.
+ */
+function routeKeepingScroll() {
+  const y = window.scrollY;
+  route();
+  if (y < 2) return;
+
+  const events = ['wheel', 'touchstart', 'keydown', 'mousedown'];
+  let done = false;
+  const stop = () => {
+    done = true;
+    events.forEach((t) => window.removeEventListener(t, stop));
+  };
+  events.forEach((t) => window.addEventListener(t, stop, { passive: true }));
+
+  const deadline = performance.now() + 2000;
+  const tick = () => {
+    if (done) return;
+    const off = Math.abs(window.scrollY - y);
+    if (off > 2) window.scrollTo(0, y);
+    if (Math.abs(window.scrollY - y) > 2 && performance.now() < deadline) {
+      requestAnimationFrame(tick);
+      return;
+    }
+    stop();
+  };
+  requestAnimationFrame(tick);
+}
+
 async function startRealtime() {
   if (unsubscribe) { unsubscribe(); unsubscribe = null; }
   try {
@@ -140,7 +174,7 @@ async function startRealtime() {
         const el = document.activeElement;
         const typing = el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
         await S.load();
-        if (!modalOpen && !typing) route();
+        if (!modalOpen && !typing) routeKeepingScroll();
       }, 500);
     });
   } catch (e) {

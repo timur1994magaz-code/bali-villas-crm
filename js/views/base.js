@@ -65,7 +65,11 @@ export async function renderBase(view, actions) {
     </div>
     <button class="btn" id="base-export">↓ CSV</button>`;
 
-  view.innerHTML = '<div class="empty-state">Загружаем базу…</div>';
+  // Заглушку показываем только при первой загрузке. При перерисовке (её вызывает
+  // живое обновление после «Отказа») список гасить нельзя: страница на кадр
+  // схлопывается до высоты заглушки, браузер прижимает прокрутку к нулю —
+  // и человека уносит в начало базы.
+  if (!cache) view.innerHTML = '<div class="empty-state">Загружаем базу…</div>';
 
   let base;
   try {
@@ -118,7 +122,8 @@ export async function renderBase(view, actions) {
     b.onclick = () => {
       group = b.dataset.group; limit = 100;
       actions.querySelectorAll('#base-seg button').forEach((x) => x.classList.toggle('active', x === b));
-      draw();
+      draw();                     // другой список — здесь подъём наверх уместен
+      window.scrollTo(0, 0);
     };
   });
   actions.querySelector('#base-export').onclick = () => exportCsv(filtered());
@@ -195,6 +200,17 @@ export async function renderBase(view, actions) {
   // вилла уже заведена в CRM? сверяем по названию, чтобы не плодить дубли
   const inCrm = (name) => S.state.villas.some((v) =>
     (v.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase());
+
+  /**
+   * Перерисовка с сохранением позиции прокрутки.
+   * Нужна там, где строка исчезает из списка (отказ, отметка «написали»):
+   * без этого таблица пересобирается и человека уносит в начало базы.
+   */
+  function drawKeepingScroll() {
+    const y = window.scrollY;
+    draw();
+    if (y && Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y);
+  }
 
   function draw() {
     const rj = rejects(), wr = written(), nt = notes(), ft = facts();
@@ -315,7 +331,7 @@ export async function renderBase(view, actions) {
     else delete next[r.k];
     try {
       await S.setSetting(REJECTS_KEY, next);
-      draw();
+      drawKeepingScroll();
       toast(on ? `«${r.n}» — отказ` : `«${r.n}» вернули в работу`);
     } catch (e) {
       toast('Не удалось сохранить: ' + e.message, true);
@@ -330,7 +346,7 @@ export async function renderBase(view, actions) {
     else delete next[r.k];
     try {
       await S.setSetting(WRITTEN_KEY, next);
-      draw();
+      drawKeepingScroll();
     } catch (e) {
       toast('Не удалось сохранить: ' + e.message, true);
     }
@@ -375,7 +391,7 @@ export async function renderBase(view, actions) {
     if (!Object.keys(row).length) delete next[r.k]; else next[r.k] = row;
     try {
       await S.setSetting(FACTS_KEY, next);
-      draw();
+      drawKeepingScroll();
     } catch (e) {
       toast('Не удалось сохранить: ' + e.message, true);
     }
