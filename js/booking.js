@@ -1,6 +1,6 @@
 // ===== Модалки брони: создание/редактирование и карточка брони с контактами клиента =====
 import * as S from './store.js';
-import { modal, closeModal, field, formData, toast, confirmDialog } from './ui.js';
+import { modal, closeModal, field, formData, formDiff, toast, confirmDialog, normalizeMoneyFields } from './ui.js';
 import { renderDocs } from './files-ui.js';
 import {
   esc, STATUS, fmtDate, fmtRange, daysBetween, money, num,
@@ -40,13 +40,13 @@ export function bookingForm(b, { onSaved } = {}) {
       <div class="form-section">
         <h4>Деньги</h4>
         <div class="grid-2">
-          ${field('priceTotal', 'Сумма аренды, Rp', { type: 'money', value: b.priceTotal, placeholder: '30 млн' })}
-          ${field('prepaid', 'Предоплата, Rp', { type: 'money', value: b.prepaid, placeholder: '3 млн' })}
+          ${field('priceTotal', 'Сумма аренды, Rp', { type: 'money', value: b.priceTotal, placeholder: '30 млн', floor: 1e6 })}
+          ${field('prepaid', 'Предоплата, Rp', { type: 'money', value: b.prepaid, placeholder: '3 млн', floor: 1e5 })}
         </div>
         <div id="money-info" class="hint" style="margin-top:8px"></div>
         <div class="grid-2" style="margin-top:10px">
           ${field('source', 'Источник', { value: b.source, placeholder: 'Instagram / Airbnb / друзья' })}
-          ${field('cleaningFee', 'Доп. сборы, Rp', { type: 'money', value: b.cleaningFee || '' })}
+          ${field('cleaningFee', 'Доп. сборы, Rp', { type: 'money', value: b.cleaningFee || '', floor: 1e5 })}
         </div>
       </div>
       ${field('notes', 'Заметки', { type: 'textarea', value: b.notes, rows: 3 })}
@@ -86,6 +86,7 @@ export function bookingForm(b, { onSaved } = {}) {
       el.addEventListener('input', upd);
       el.addEventListener('change', upd);
       upd();
+      const initial = formData(el);
 
       el.querySelector('[data-newclient]').onclick = () => {
         const draft = formData(el);
@@ -101,10 +102,23 @@ export function bookingForm(b, { onSaved } = {}) {
           await S.deleteBooking(b.id); closeModal(); toast('Бронь удалена'); onSaved && onSaved(null);
         }
       };
-      el.querySelector('[data-save]').onclick = async () => {
+      const saveBtn = el.querySelector('[data-save]');
+      saveBtn.onclick = async () => {
+        const fixed = normalizeMoneyFields(el);
+        if (fixed.length) {
+          toast(fixed.map((f) => `${f.label}: ${money(f.from)} → ${money(f.to)}`).join('; '));
+        }
         const d = formData(el);
         if (daysBetween(d.dateFrom, d.dateTo) <= 0) return toast('Проверьте даты', true);
-        const saved = await S.saveBooking({ ...b, ...d });
+        const changed = isNew ? d : formDiff(el, initial);
+        saveBtn.disabled = true;
+        let saved;
+        try {
+          saved = await S.saveBooking({ ...(S.booking(b.id) || b), ...changed });
+        } catch (e) {
+          saveBtn.disabled = false;
+          return toast('Не удалось сохранить: ' + e.message, true);
+        }
         closeModal(); toast('Бронь сохранена'); onSaved && onSaved(saved);
       };
     },
@@ -129,14 +143,26 @@ export function clientQuickForm(onCreated) {
         ${field('wantBedrooms', 'Кол-во комнат', { type: 'number', value: '', placeholder: '2' })}
         ${field('wantArea', 'Район', { value: '', placeholder: 'Переренан' })}
       </div>
-      ${field('budget', 'Бюджет в месяц, Rp', { type: 'money', value: '', placeholder: '30 млн' })}`,
+      ${field('budget', 'Бюджет в месяц, Rp', { type: 'money', value: '', placeholder: '30 млн', floor: 1e6 })}`,
     footer: '<button class="btn" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Создать</button>',
     onMount(el) {
       el.querySelector('[data-cancel]').onclick = closeModal;
-      el.querySelector('[data-save]').onclick = async () => {
+      const saveBtn2 = el.querySelector('[data-save]');
+      saveBtn2.onclick = async () => {
+        const fixed = normalizeMoneyFields(el);
+        if (fixed.length) {
+          toast(fixed.map((f) => `${f.label}: ${money(f.from)} → ${money(f.to)}`).join('; '));
+        }
         const d = formData(el);
         if (!d.name) return toast('Введите имя', true);
-        const saved = await S.saveClient({ ...c, ...d });
+        saveBtn2.disabled = true;
+        let saved;
+        try {
+          saved = await S.saveClient({ ...c, ...d });
+        } catch (e) {
+          saveBtn2.disabled = false;
+          return toast('Не удалось сохранить: ' + e.message, true);
+        }
         closeModal(); toast('Клиент создан'); onCreated && onCreated(saved);
       };
     },

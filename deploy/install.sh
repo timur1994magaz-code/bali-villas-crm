@@ -91,7 +91,7 @@ chmod +x "$APP_DIR/deploy/backup.sh"
 # когда совпадений нет (иначе пустой ввод затёр бы весь crontab).
 CRON_TMP=$(mktemp)
 crontab -l 2>/dev/null | grep -v 'bali-crm/deploy/backup.sh' > "$CRON_TMP" || true
-echo "0 3 * * * $APP_DIR/deploy/backup.sh >> /var/log/bali-crm-backup.log 2>&1" >> "$CRON_TMP"
+echo "0 * * * * $APP_DIR/deploy/backup.sh >> /var/log/bali-crm-backup.log 2>&1" >> "$CRON_TMP"
 echo "30 3 * * 0 $APP_DIR/deploy/backup.sh --full >> /var/log/bali-crm-backup.log 2>&1" >> "$CRON_TMP"
 crontab "$CRON_TMP"
 rm -f "$CRON_TMP"

@@ -111,6 +111,19 @@ export async function renderSettings(view, actions) {
       </div>
     </div>` : ''}
 
+    ${data.hasChangeLog() ? `
+    <div class="panel">
+      <div class="panel-head"><h3>🕓 Журнал изменений</h3>
+        <div class="spacer"></div>
+        <button class="btn btn-sm" id="log-reload">Обновить</button>
+      </div>
+      <div class="hint" style="margin-bottom:10px">
+        Каждая правка виллы, брони и клиента записывается: кто, когда, что было и что стало.
+        Если цифра изменилась — здесь видно, откуда она взялась.
+      </div>
+      <div id="change-log"><div class="mute">Загружаем…</div></div>
+    </div>` : ''}
+
     <div class="panel">
       <div class="panel-head"><h3>📦 Бэкап и перенос</h3></div>
       <div class="row">
@@ -155,6 +168,43 @@ export async function renderSettings(view, actions) {
     </div>`;
 
   const refresh = () => renderSettings(view, actions);
+
+  // --- журнал изменений ---
+  if (data.hasChangeLog()) {
+    const box = view.querySelector('#change-log');
+    const FIELD_NAMES = {
+      ownerPrice: 'цена собственника', ourPriceMonth: 'наша цена в месяц',
+      ourPriceNight: 'наша цена за ночь', name: 'название', area: 'район',
+      bedrooms: 'спален', budget: 'бюджет', wantBedrooms: 'комнат нужно',
+      wantArea: 'район нужен', priceTotal: 'сумма аренды', prepaid: 'предоплата',
+      dateFrom: 'заезд', dateTo: 'выезд', status: 'статус', notes: 'заметки',
+      phone: 'телефон', ownerPhone: 'телефон собственника', terms: 'условия',
+    };
+    const TABLES = { villas: '🏝️', bookings: '🗓️', clients: '👤' };
+    const drawLog = async () => {
+      try {
+        const list = await data.listChanges(200);
+        if (!list.length) {
+          box.innerHTML = '<div class="mute">Пока ничего не менялось.</div>';
+          return;
+        }
+        box.innerHTML = `<div class="table-wrap"><table>
+          <thead><tr><th>Когда</th><th>Запись</th><th>Что</th><th>Было</th><th>Стало</th><th>Кто</th></tr></thead>
+          <tbody>${list.map((c) => `<tr>
+            <td class="nowrap file-sub">${esc(String(c.at || '').slice(0, 16).replace('T', ' '))}</td>
+            <td>${TABLES[c.tbl] || ''} ${esc(c.name || c.doc_id.slice(0, 8))}</td>
+            <td>${esc(FIELD_NAMES[c.field] || c.field)}</td>
+            <td class="file-sub">${esc(c.before || '—')}</td>
+            <td><b>${esc(c.after || '—')}</b></td>
+            <td class="file-sub nowrap">${esc(c.by || '')}</td>
+          </tr>`).join('')}</tbody></table></div>`;
+      } catch (e) {
+        box.innerHTML = `<div class="mute">Не удалось загрузить журнал: ${esc(e.message)}</div>`;
+      }
+    };
+    drawLog();
+    view.querySelector('#log-reload').onclick = drawLog;
+  }
 
   // --- сотрудники (свой сервер) ---
   if (isServer && user && user.role === 'admin') {

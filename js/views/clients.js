@@ -1,6 +1,6 @@
 // ===== Клиенты: список и карточка с документами =====
 import * as S from '../store.js';
-import { modal, closeModal, field, formData, toast, confirmDialog } from '../ui.js';
+import { modal, closeModal, field, formData, formDiff, toast, confirmDialog, normalizeMoneyFields } from '../ui.js';
 import { renderDocs } from '../files-ui.js';
 import { bookingForm, bookingCard, plural } from '../booking.js';
 import { taskRow, bindTaskList, taskForm } from './tasks.js';
@@ -198,18 +198,33 @@ export function clientForm(c) {
         ${field('wantArea', 'Район', { value: c.wantArea, placeholder: 'Переренан, Чангу…' })}
         ${field('instagram', 'Instagram', { value: c.instagram })}
       </div>
-      ${field('budget', 'Бюджет в месяц, Rp', { type: 'money', value: c.budget,
+      ${field('budget', 'Бюджет в месяц, Rp', { type: 'money', value: c.budget, floor: 1e6,
         placeholder: '30 млн', hint: 'Запрос клиента. Район не отсекает другие: виллы в нём просто идут первыми.' })}
       ${field('source', 'Источник', { value: c.source, placeholder: 'Instagram / Airbnb / рекомендация' })}
       ${field('notes', 'Заметки', { type: 'textarea', value: c.notes, rows: 3 })}
       <div class="hint" style="margin-top:6px">📎 Паспорт и договор загружаются в карточке клиента — кнопка «Паспорт / договор» вверху.</div>`,
     footer: '<button class="btn" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>',
     onMount(el) {
+      const initial = formData(el);
       el.querySelector('[data-cancel]').onclick = closeModal;
-      el.querySelector('[data-save]').onclick = async () => {
+      const saveBtn = el.querySelector('[data-save]');
+      saveBtn.onclick = async () => {
+        const fixed = normalizeMoneyFields(el);
+        if (fixed.length) {
+          toast(fixed.map((f) => `${f.label}: ${money(f.from)} → ${money(f.to)}`).join('; '));
+        }
         const d = formData(el);
         if (!d.name) return toast('Введите имя', true);
-        const saved = await S.saveClient({ ...c, ...d });
+        const changed = isNew ? d : formDiff(el, initial);
+        saveBtn.disabled = true;
+        const fresh = S.client(c.id) || c;
+        let saved;
+        try {
+          saved = await S.saveClient({ ...fresh, ...changed });
+        } catch (e) {
+          saveBtn.disabled = false;
+          return toast('Не удалось сохранить: ' + e.message, true);
+        }
         closeModal(); toast('Клиент сохранён');
         if (isNew) location.hash = '#/client/' + saved.id;
         else window.dispatchEvent(new Event('data-changed'));

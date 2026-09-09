@@ -211,6 +211,12 @@ async function handleAuthed(req, res, url, method, user) {
   /* ---- записи ---- */
   if (p === '/api/data' && method === 'GET') return ok(res, store.allDocs());
 
+  // журнал изменений: кто, когда и что поправил
+  if (p === '/api/changes' && method === 'GET') {
+    const limit = Math.min(1000, Math.max(1, Number(q.get('limit')) || 200));
+    return ok(res, { changes: store.listChanges(limit, q.get('doc') || null) });
+  }
+
   const rowMatch = p.match(/^\/api\/row\/([a-z_]+)\/(.+)$/);
   if (rowMatch) {
     const [, tbl, rawId] = rowMatch;
@@ -231,7 +237,7 @@ async function handleAuthed(req, res, url, method, user) {
       broadcast(tbl);
       return ok(res);
     }
-    if (method === 'DELETE') { store.delDoc(tbl, id); broadcast(tbl); return ok(res); }
+    if (method === 'DELETE') { store.delDoc(tbl, id, user.id); broadcast(tbl); return ok(res); }
   }
 
   if (p === '/api/wipe' && method === 'POST') {

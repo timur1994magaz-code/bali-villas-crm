@@ -1,6 +1,6 @@
 // ===== Карточка виллы: обзор, фото, локация, календарь, брони, документы =====
 import * as S from '../store.js';
-import { modal, closeModal, field, formData, toast, confirmDialog } from '../ui.js';
+import { modal, closeModal, field, formData, formDiff, toast, confirmDialog, normalizeMoneyFields } from '../ui.js';
 import { renderPhotos, renderDocs, uploadPhotos } from '../files-ui.js';
 import * as data from '../data.js';
 import { bookingForm, bookingCard, plural } from '../booking.js';
@@ -244,13 +244,13 @@ export async function renderVillaCard(view, actions, id) {
         el.querySelector('[data-cancel]').onclick = closeModal;
         const clr = el.querySelector('[data-clear]');
         if (clr) clr.onclick = async () => {
-          await S.saveVilla({ ...v, driveUrl: '', driveNote: '' });
+          await S.saveVilla({ ...(S.villa(v.id) || v), driveUrl: '', driveNote: '' });
           closeModal(); toast('Ссылка убрана'); rerender();
         };
         el.querySelector('[data-save]').onclick = async () => {
           const d = formData(el);
           if (d.driveUrl && !/^https?:\/\//i.test(d.driveUrl)) return toast('Ссылка должна начинаться с https://', true);
-          await S.saveVilla({ ...v, driveUrl: d.driveUrl, driveNote: d.driveNote });
+          await S.saveVilla({ ...(S.villa(v.id) || v), driveUrl: d.driveUrl, driveNote: d.driveNote });
           closeModal(); toast('Ссылка сохранена'); rerender();
         };
       },
@@ -325,7 +325,7 @@ export async function renderVillaCard(view, actions, id) {
         const r = await resolve(d.mapUrl);
         if (r) { lat = r.lat; lng = r.lng; place = r.place || place; }
       }
-      await S.saveVilla({ ...v, mapUrl: d.mapUrl, lat, lng, mapPlace: place });
+      await S.saveVilla({ ...(S.villa(v.id) || v), mapUrl: d.mapUrl, lat, lng, mapPlace: place });
       toast(lat && lng ? 'Локация сохранена' : 'Ссылка сохранена, но точку определить не удалось', !(lat && lng));
       rerender();
     };
@@ -346,7 +346,7 @@ export async function renderVillaCard(view, actions, id) {
           }
           return;
         }
-        await S.saveVilla({ ...v, lat: r.lat, lng: r.lng, mapPlace: r.place || v.mapPlace || '' });
+        await S.saveVilla({ ...(S.villa(v.id) || v), lat: r.lat, lng: r.lng, mapPlace: r.place || v.mapPlace || '' });
         rerender();
       });
     }
@@ -507,12 +507,12 @@ export function villaForm(v) {
 
       <div class="form-section"><h4>Цены</h4>
         <div class="grid-2">
-          ${field('ownerPrice', 'Цена собственника, Rp', { type: 'money', value: v.ownerPrice, placeholder: '36 млн' })}
+          ${field('ownerPrice', 'Цена собственника, Rp', { type: 'money', value: v.ownerPrice, placeholder: '36 млн', floor: 1e6 })}
           ${field('ownerPeriod', 'Период', { options: Object.entries(PERIODS).map(([value, label]) => ({ value, label })), value: v.ownerPeriod })}
         </div>
         <div class="grid-2" style="margin-top:10px">
-          ${field('ourPriceNight', 'Наша цена за ночь, Rp', { type: 'money', value: v.ourPriceNight, placeholder: '3,1 млн' })}
-          ${field('ourPriceMonth', 'Наша цена в месяц, Rp', { type: 'money', value: v.ourPriceMonth, placeholder: '58 млн' })}
+          ${field('ourPriceNight', 'Наша цена за ночь, Rp', { type: 'money', value: v.ourPriceNight, placeholder: '3,1 млн', floor: 1e5 })}
+          ${field('ourPriceMonth', 'Наша цена в месяц, Rp', { type: 'money', value: v.ourPriceMonth, placeholder: '58 млн', floor: 1e6 })}
         </div>
         <div class="hint" id="margin-hint" style="margin-top:8px"></div>
       </div>
@@ -535,12 +535,32 @@ export function villaForm(v) {
           : 'Укажите цену собственника и нашу цену — посчитаем маржу.';
       };
       el.addEventListener('input', upd); el.addEventListener('change', upd); upd();
+      const initial = formData(el);        // с чем форму открыли — чтобы понять, что тронули
       el.querySelector('[data-cancel]').onclick = closeModal;
-      el.querySelector('[data-save]').onclick = async () => {
+      const saveBtn = el.querySelector('[data-save]');
+      saveBtn.onclick = async () => {
+        const fixed = normalizeMoneyFields(el);
+        if (fixed.length) {
+          toast(fixed.map((f) => `${f.label}: ${money(f.from)} → ${money(f.to)}`).join('; '));
+        }
         const d = formData(el);
         if (!d.name) return toast('Введите название виллы', true);
-        if ((!d.lat || !d.lng) && d.mapUrl) { const c = parseCoords(d.mapUrl); if (c) { d.lat = c.lat; d.lng = c.lng; } }
-        const saved = await S.saveVilla({ ...v, ...d });
+        // пишем только тронутые поля — иначе вернём прежние значения тем,
+        // которые за это время поправил сотрудник или другая вкладка
+        const changed = isNew ? d : formDiff(el, initial);
+        if (changed.mapUrl !== undefined || (!d.lat || !d.lng)) {
+          const c = parseCoords(d.mapUrl);
+          if (c) { changed.lat = String(c.lat); changed.lng = String(c.lng); }
+        }
+        saveBtn.disabled = true;                       // второй щелчок не создаст двойника
+        const fresh = S.villa(v.id) || v;
+        let saved;
+        try {
+          saved = await S.saveVilla({ ...fresh, ...changed });
+        } catch (e) {
+          saveBtn.disabled = false;
+          return toast('Не удалось сохранить: ' + e.message, true);
+        }
         closeModal(); toast('Вилла сохранена');
         if (isNew) location.hash = '#/villa/' + saved.id;
         else window.dispatchEvent(new Event('data-changed'));

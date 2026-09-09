@@ -105,10 +105,13 @@ export function field(name, label, opts = {}) {
   let input;
   if (type === 'money') {
     // не «число»: колесо мыши над числовым полем незаметно меняет сумму,
-    // а так ещё и можно писать «30 млн» или «30jt»
-    const shown = value === '' || value === null || value === undefined
-      ? '' : Number(value).toLocaleString('ru-RU').replace(/\u00a0/g, ' ');
-    input = `<input type="text" inputmode="numeric" data-money name="${name}" value="${esc(shown)}" placeholder="${esc(placeholder)}">`;
+    // а так ещё и можно писать «30 млн» или «30jt».
+    // floor — граница правдоподобия: суммы ниже неё почти наверняка набраны
+    // в миллионах («50» вместо 50 000 000), поэтому подсказываем и поправляем.
+    const shown = fmtMoneyInput(value);
+    input = `<input type="text" inputmode="numeric" data-money data-floor="${Number(opts.floor) || 0}"
+      name="${name}" value="${esc(shown)}" placeholder="${esc(placeholder)}">
+      <span class="money-echo" data-echo-for="${name}"></span>`;
   } else if (options) {
     input = `<select name="${name}">${options.map((o) => {
       const v = typeof o === 'string' ? o : o.value;
@@ -136,13 +139,81 @@ export function formData(el) {
   return out;
 }
 
-/** Аккуратный вид сумм при потере фокуса: 30 млн → 30 000 000. */
+/**
+ * Что человек действительно изменил в форме.
+ * Записывать всю форму целиком нельзя: пока она открыта, запись мог поправить
+ * сотрудник или могли добавиться данные с других вкладок — сохранение всей формы
+ * вернуло бы им прежние значения. Пишем только тронутые поля.
+ */
+export function formDiff(el, initial) {
+  const now = formData(el);
+  const changed = {};
+  for (const k of Object.keys(now)) {
+    if (!initial || initial[k] !== now[k]) changed[k] = now[k];
+  }
+  return changed;
+}
+
+/** Сумма в поле ввода: 50000000 → «50 000 000». */
+export function fmtMoneyInput(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '';        // испорченное значение не показываем как «не число»
+  return n.toLocaleString('ru-RU').replace(/\u00a0/g, ' ');
+}
+
+const floorOf = (input) => Number(input.getAttribute('data-floor')) || 0;
+
+/** Что именно будет сохранено — видно под полем, пока человек печатает. */
+function echoMoney(input) {
+  const box = input.parentElement && input.parentElement.querySelector(`[data-echo-for="${input.name}"]`);
+  if (!box) return;
+  const n = parseAmount(input.value);
+  const floor = floorOf(input);
+  if (n === null) { box.textContent = ''; box.className = 'money-echo'; return; }
+  if (floor && n > 0 && n < floor) {
+    box.innerHTML = `⚠ будет сохранено <b>${esc(money(n))}</b> — похоже, вы имели в виду
+      <b>${esc(money(n * 1e6))}</b>. Поправим при сохранении.`;
+    box.className = 'money-echo warn';
+    return;
+  }
+  box.textContent = '= ' + money(n);
+  box.className = 'money-echo';
+}
+
+/**
+ * Аккуратный вид сумм и живая подсказка под полем.
+ * Ниже границы правдоподобия сумма домножается на миллион: цена виллы
+ * в 50 рупий за месяц не существует, а «50» вместо «50 000 000» набирают постоянно.
+ */
 export function enhanceMoneyInputs(root) {
   root.querySelectorAll('input[data-money]').forEach((i) => {
+    echoMoney(i);
+    i.addEventListener('input', () => echoMoney(i));
     i.addEventListener('blur', () => {
-      const n = parseAmount(i.value);
-      i.value = n === null ? '' : n.toLocaleString('ru-RU').replace(/\u00a0/g, ' ');
+      let n = parseAmount(i.value);
+      const floor = floorOf(i);
+      if (n !== null && floor && n > 0 && n < floor) n = n * 1e6;
+      i.value = n === null ? '' : fmtMoneyInput(n);
+      echoMoney(i);
     });
   });
-  void money;
+}
+
+/**
+ * Последняя проверка перед записью: если человек не уходил из поля,
+ * blur мог не сработать. Возвращает список поправок, чтобы о них сказать.
+ */
+export function normalizeMoneyFields(root) {
+  const fixed = [];
+  root.querySelectorAll('input[data-money]').forEach((i) => {
+    const n = parseAmount(i.value);
+    const floor = floorOf(i);
+    if (n === null || !floor || n <= 0 || n >= floor) return;
+    const label = i.closest('label')?.querySelector('span')?.textContent || i.name;
+    i.value = fmtMoneyInput(n * 1e6);
+    echoMoney(i);
+    fixed.push({ label: String(label).replace(/,\s*Rp$/, ''), from: n, to: n * 1e6 });
+  });
+  return fixed;
 }

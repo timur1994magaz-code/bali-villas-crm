@@ -46,6 +46,19 @@ db.exec(`
     created_by text
   );
   create index if not exists files_owner on files (owner_type, owner_id, kind, sort);
+  create table if not exists changes (
+    id      integer primary key autoincrement,
+    at      text not null,
+    tbl     text not null,
+    doc_id  text not null,
+    name    text,
+    field   text not null,
+    before  text,
+    after   text,
+    by      text
+  );
+  create index if not exists changes_at on changes (at desc);
+  create index if not exists changes_doc on changes (doc_id);
   create table if not exists users (
     id         text primary key,
     email      text unique not null,
@@ -76,14 +89,69 @@ export function allDocs() {
   }
   return { ...out, settings };
 }
+// поля, по которым нет смысла вести журнал
+const SKIP_FIELDS = new Set(['id', 'createdAt', 'updatedAt']);
+const short = (x) => {
+  if (x === null || x === undefined) return '';
+  const s = typeof x === 'object' ? JSON.stringify(x) : String(x);
+  return s.length > 300 ? s.slice(0, 300) + '…' : s;
+};
+
+/**
+ * Журнал изменений: кто, когда и что именно поправил.
+ * Нужен, чтобы вопрос «почему цена стала другой» имел точный ответ,
+ * а не догадки по ночным копиям.
+ */
+function logChanges(tbl, id, before, after, userId) {
+  const email = userId ? (userById(userId) || {}).email || '' : '';
+  const name = after && after.name ? String(after.name) : (before && before.name) || '';
+  const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+  const stamp = now();
+  const ins = db.prepare(`insert into changes (at, tbl, doc_id, name, field, before, after, by)
+                          values (?,?,?,?,?,?,?,?)`);
+  let n = 0;
+  for (const k of keys) {
+    if (SKIP_FIELDS.has(k)) continue;
+    const a = short(before ? before[k] : '');
+    const b = short(after ? after[k] : '');
+    if (a === b) continue;
+    ins.run(stamp, tbl, id, name, k, a, b, email);
+    if (++n > 60) break;          // на случай массовой правки не раздуваем журнал
+  }
+  return n;
+}
+
 export function putDoc(tbl, id, doc, userId) {
+  const prevRow = db.prepare('select doc from docs where tbl = ? and id = ?').get(tbl, id);
+  const prev = prevRow ? JSON.parse(prevRow.doc) : null;
   db.prepare(`insert into docs (tbl, id, doc, updated_at, updated_by) values (?,?,?,?,?)
               on conflict(tbl, id) do update set doc = excluded.doc,
               updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
     .run(tbl, id, JSON.stringify(doc), now(), userId || null);
+  try { logChanges(tbl, id, prev, doc, userId); } catch (e) { void e; }
 }
-export function delDoc(tbl, id) {
+
+export function logDelete(tbl, id, name, userId) {
+  const email = userId ? (userById(userId) || {}).email || '' : '';
+  try {
+    db.prepare(`insert into changes (at, tbl, doc_id, name, field, before, after, by)
+                values (?,?,?,?,?,?,?,?)`)
+      .run(now(), tbl, id, name || '', '(запись удалена)', 'была', '', email);
+  } catch (e) { void e; }
+}
+
+export function listChanges(limit = 200, docId = null) {
+  const sql = docId
+    ? 'select * from changes where doc_id = ? order by id desc limit ?'
+    : 'select * from changes order by id desc limit ?';
+  return db.prepare(sql).all(...(docId ? [docId, limit] : [limit]));
+}
+export function delDoc(tbl, id, userId) {
+  const row = db.prepare('select doc from docs where tbl = ? and id = ?').get(tbl, id);
+  let name = '';
+  try { name = row ? (JSON.parse(row.doc).name || '') : ''; } catch (e) { void e; }
   db.prepare('delete from docs where tbl = ? and id = ?').run(tbl, id);
+  logDelete(tbl, id, name, userId);
 }
 export function putSetting(key, value) {
   db.prepare(`insert into settings (key, value) values (?,?)

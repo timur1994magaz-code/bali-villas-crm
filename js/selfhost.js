@@ -138,6 +138,13 @@ export async function allFileRecords() {
 }
 export async function fileStats() { return req('api/files/stats'); }
 
+/* ---------- Журнал изменений ---------- */
+export async function listChanges(limit = 200, docId = null) {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (docId) qs.set('doc', docId);
+  return (await req(`api/changes?${qs}`)).changes || [];
+}
+
 /* ---------- Карты ---------- */
 /** Разворачивает короткую ссылку Google Maps силами сервера. */
 export async function resolveMapLink(url) {

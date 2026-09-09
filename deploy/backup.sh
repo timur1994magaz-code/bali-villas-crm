@@ -11,7 +11,7 @@ set -euo pipefail
 
 DATA_DIR="${CRM_DATA_DIR:-/var/lib/bali-crm}"
 DEST="${CRM_BACKUP_DIR:-/var/backups/bali-crm}"
-KEEP_DB="${CRM_BACKUP_KEEP_DB:-14}"
+KEEP_DB="${CRM_BACKUP_KEEP_DB:-72}"   # раз в час — трое суток истории
 KEEP_FULL="${CRM_BACKUP_KEEP_FULL:-2}"
 MODE="${1:-db}"
 STAMP=$(date +%Y-%m-%d_%H%M)

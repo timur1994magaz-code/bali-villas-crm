@@ -2,7 +2,7 @@
 import * as S from '../store.js';
 import * as data from '../data.js';
 import { esc, phoneHref, waHref, download, fmtDateShort, parseAmount, moneyShort } from '../util.js';
-import { toast } from '../ui.js';
+import { toast, confirmDialog } from '../ui.js';
 import { villaForm } from './villa.js';
 
 const AREAS = ['Чангу', 'Переренан', 'Сесех', 'Чемаги', 'Мунггу', 'Тумбак Баюх'];
@@ -398,8 +398,18 @@ export async function renderBase(view, actions) {
   }
 
   // переносим строку базы в карточку виллы — форма открывается уже заполненной
-  function toCrm(r) {
+  async function toCrm(r) {
     if (!r) return;
+    // защита от двойников: вилла с таким названием могла попасть в CRM раньше
+    const same = S.state.villas.find((v) =>
+      (v.name || '').trim().toLowerCase() === String(r.n || '').trim().toLowerCase());
+    if (same) {
+      const open = await confirmDialog(
+        `Вилла «${same.name}» уже есть в CRM. Открыть её карточку вместо создания второй записи?`,
+        { title: 'Такая вилла уже есть', okText: 'Открыть карточку', danger: false });
+      if (open) location.hash = '#/villa/' + same.id;
+      return;
+    }
     villaForm({
       ...S.emptyVilla(),
       name: r.n || '',

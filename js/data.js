@@ -184,6 +184,13 @@ export async function allFileRecords() {
   await db.eachFile((f) => out.push(f));
   return out.map((f) => ({ ...f, _blob: f.blob, _thumb: f.thumb }));
 }
+/** Журнал изменений ведёт только свой сервер. */
+export const hasChangeLog = () => isServer();
+export async function listChanges(limit = 200, docId = null) {
+  if (!isServer()) return [];
+  return selfhost.listChanges(limit, docId);
+}
+
 export async function storageInfo() {
   if (isRemote()) {
     const st = await fileStats();
