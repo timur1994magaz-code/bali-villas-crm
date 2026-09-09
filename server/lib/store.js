@@ -297,3 +297,9 @@ export function dropSession(token) {
 export function purgeSessions() {
   db.prepare('delete from sessions where expires_at < ?').run(Date.now());
 }
+
+/** Подпись автора для только что записанных изменений (используется разовыми правками). */
+export function markLastChanges(label) {
+  const r = db.prepare("update changes set by = ? where (by is null or by = '')").run(label);
+  return r.changes;
+}
