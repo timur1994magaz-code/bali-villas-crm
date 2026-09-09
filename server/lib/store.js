@@ -181,6 +181,7 @@ function rowToMeta(r) {
     name: r.name, mime: r.mime, size: r.size, caption: r.caption || '',
     w: r.w, h: r.h, sort: r.sort, ext: r.ext,
     hasThumb: !!r.has_thumb, optimized: !!r.optimized, createdAt: r.created_at,
+    createdBy: r.created_by || null,
   };
 }
 export function insertFile(meta, userId) {
@@ -195,6 +196,11 @@ export function insertFile(meta, userId) {
 export function getFile(id) {
   const r = db.prepare('select * from files where id = ?').get(id);
   return r ? rowToMeta(r) : null;
+}
+/** Кто загрузил файл — нужно, чтобы сотрудник мог убрать только свою загрузку. */
+export function fileAuthor(id) {
+  const r = db.prepare('select created_by from files where id = ?').get(id);
+  return r ? r.created_by : null;
 }
 export function listFiles(ownerType, ownerId, kind) {
   const sql = kind

@@ -6,6 +6,9 @@ import { esc, bytes, download, fmtDateShort } from './util.js';
 import { toast, confirmDialog, openLightbox } from './ui.js';
 import { makeThumb, prepareOriginal, isHeic, supportsHeic } from './images.js';
 
+/** Удалять чужие загрузки нельзя: договоры и паспорта убирает только владелец. */
+const mayDelete = (f) => data.isOwner() || !f.createdBy || f.createdBy === (data.me() || {}).id;
+
 export const revokeAll = data.revokeAll;
 
 function fileIcon(mime, name) {
@@ -104,7 +107,7 @@ export async function renderPhotos(box, ownerType, ownerId, opts = {}) {
           ${i === 0 ? '' : `<button data-act="cover" data-id="${f.id}" title="Сделать обложкой">★</button>`}
           <button data-act="dl" data-id="${f.id}" title="Скачать оригинал">⬇︎</button>
           <button data-act="cap" data-id="${f.id}" title="Подпись">✎</button>
-          <button data-act="del" data-id="${f.id}" title="Удалить">✕</button>
+          ${mayDelete(f) ? `<button data-act="del" data-id="${f.id}" title="Удалить">✕</button>` : ''}
         </div>
         ${i === 0 ? '<div class="photo-badge">обложка</div>' : ''}
         ${f.caption ? `<div class="photo-cap">${esc(f.caption)}</div>` : ''}
@@ -208,7 +211,7 @@ export async function renderDocs(box, ownerType, ownerId, opts = {}) {
       <div class="spacer"></div>
       <button class="btn btn-sm" data-act="open" data-id="${f.id}">Открыть</button>
       <button class="btn btn-sm" data-act="dl" data-id="${f.id}">⬇︎</button>
-      <button class="btn btn-sm btn-danger" data-act="del" data-id="${f.id}">✕</button>
+      ${mayDelete(f) ? `<button class="btn btn-sm btn-danger" data-act="del" data-id="${f.id}">✕</button>` : ''}
     </div>`).join('') : '<div class="mute">Файлов пока нет.</div>';
 
   const input = box.querySelector('[data-input]');

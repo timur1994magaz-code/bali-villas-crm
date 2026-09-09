@@ -1,5 +1,6 @@
 // ===== Клиенты: список и карточка с документами =====
 import * as S from '../store.js';
+import * as data from '../data.js';
 import { modal, closeModal, field, formData, formDiff, toast, confirmDialog, normalizeMoneyFields } from '../ui.js';
 import { renderDocs } from '../files-ui.js';
 import { bookingForm, bookingCard, plural } from '../booking.js';
@@ -41,7 +42,9 @@ export function renderClientsList(view, actions) {
           <td>${esc(c.email || '—')}</td>
           <td class="num">${esc(c.wantBedrooms || '—')}</td>
           <td>${esc(c.wantArea || '—')}</td>
-          <td class="num">${c.budget ? moneyShort(c.budget, 'IDR') : '—'}</td>
+          <td class="num">${c.budget
+            ? `${moneyShort(c.budget, 'IDR')}<div class="file-sub">${c.budgetPeriod === 'night' ? 'в сутки' : 'в месяц'}</div>`
+            : '—'}</td>
           <td>${bs.length}</td>
           <td>${cur ? `${esc(v ? v.name : '')} <span class="file-sub">${fmtRange(cur.dateFrom, cur.dateTo)}</span>` : '—'}</td>
           <td class="num">${paid ? moneyShort(paid, 'IDR') : '—'}</td>
@@ -63,7 +66,7 @@ export function renderClientCard(view, actions, id) {
     <button class="btn btn-sm" id="c-edit">✎ Редактировать</button>
     <button class="btn btn-sm" id="c-doc">📎 Паспорт / договор</button>
     <button class="btn btn-sm btn-primary" id="c-book">+ Бронь клиенту</button>
-    <button class="btn btn-sm btn-danger" id="c-del">Удалить</button>`;
+    ${data.canDelete() ? '<button class="btn btn-sm btn-danger" id="c-del">Удалить</button>' : ''}`;
   actions.querySelector('#c-edit').onclick = () => clientForm(c);
   actions.querySelector('#c-doc').onclick = () => {
     const input = view.querySelector('#c-docs [data-input]');
@@ -75,7 +78,8 @@ export function renderClientCard(view, actions, id) {
     const b = S.emptyBooking(S.state.villas[0] ? S.state.villas[0].id : '', today());
     bookingForm({ ...b, clientId: c.id }, { onSaved: () => renderClientCard(view, actions, id) });
   };
-  actions.querySelector('#c-del').onclick = async () => {
+  const cDel = actions.querySelector('#c-del');
+  if (cDel) cDel.onclick = async () => {
     if (await confirmDialog(`Удалить клиента «${c.name}» и его файлы? Брони останутся, но без клиента.`)) {
       await S.deleteClient(c.id); toast('Клиент удалён'); location.hash = '#/clients';
     }
@@ -108,7 +112,9 @@ export function renderClientCard(view, actions, id) {
           ${c.instagram ? `<a class="chip-link" href="https://instagram.com/${esc(String(c.instagram).replace(/^@/, ''))}" target="_blank" rel="noopener">📷 ${esc(c.instagram)}</a>` : ''}
         </div>
         <dl class="kv">
-          <dt>Бюджет в месяц</dt><dd>${c.budget ? `<b>${moneyShort(c.budget, 'IDR')}</b>` : '<span class="mute">не указан</span>'}
+          <dt>Бюджет</dt><dd>${c.budget
+            ? `<b>${moneyShort(c.budget, 'IDR')}</b> ${c.budgetPeriod === 'night' ? 'в сутки' : 'в месяц'}`
+            : '<span class="mute">не указан</span>'}
             ${c.budget || c.wantBedrooms || c.wantArea
               ? '<button class="btn btn-sm" id="c-pick" style="margin-left:8px">🔎 Подобрать виллы</button>' : ''}</dd>
           <dt>Кол-во комнат</dt><dd>${c.wantBedrooms ? esc(c.wantBedrooms) + ' и больше' : '<span class="mute">не указано</span>'}</dd>
@@ -169,7 +175,7 @@ export function renderClientCard(view, actions, id) {
         from: saved.from || today(), months: saved.months || 2, to: '',
         bedroomsMin: String(c.wantBedrooms || ''), bedroomsMax: '',
         preferArea: String(c.wantArea || ''),        // район поднимает, но не отсекает
-        budget: String(c.budget || ''), onlyFree: true,
+        budget: String(c.budget || ''), budgetPeriod: c.budgetPeriod || 'month', onlyFree: true,
       }));
     } catch (e) { void e; }
     location.hash = '#/search';
@@ -198,14 +204,29 @@ export function clientForm(c) {
         ${field('wantArea', 'Район', { value: c.wantArea, placeholder: 'Переренан, Чангу…' })}
         ${field('instagram', 'Instagram', { value: c.instagram })}
       </div>
-      ${field('budget', 'Бюджет в месяц, Rp', { type: 'money', value: c.budget, floor: 1e6,
-        placeholder: '30 млн', hint: 'Запрос клиента. Район не отсекает другие: виллы в нём просто идут первыми.' })}
+      <div class="grid-2">
+        ${field('budget', 'Бюджет, Rp', { type: 'money', value: c.budget,
+          floor: c.budgetPeriod === 'night' ? 1e5 : 1e6, placeholder: '30 млн' })}
+        ${field('budgetPeriod', 'За период', { options: [
+          { value: 'month', label: 'в месяц — долгая аренда' },
+          { value: 'night', label: 'в сутки — короткий заезд' }], value: c.budgetPeriod || 'month' })}
+      </div>
+      <div class="hint">Район не отсекает другие: виллы в нём просто идут первыми.</div>
       ${field('source', 'Источник', { value: c.source, placeholder: 'Instagram / Airbnb / рекомендация' })}
       ${field('notes', 'Заметки', { type: 'textarea', value: c.notes, rows: 3 })}
       <div class="hint" style="margin-top:6px">📎 Паспорт и договор загружаются в карточке клиента — кнопка «Паспорт / договор» вверху.</div>`,
     footer: '<button class="btn" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>',
     onMount(el) {
       const initial = formData(el);
+      const per = el.querySelector('[name=budgetPeriod]');
+      const bud = el.querySelector('[name=budget]');
+      if (per && bud) {
+        per.onchange = () => {
+          // суточный бюджет может быть меньше миллиона — граница другая
+          bud.setAttribute('data-floor', per.value === 'night' ? '100000' : '1000000');
+          bud.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+      }
       el.querySelector('[data-cancel]').onclick = closeModal;
       const saveBtn = el.querySelector('[data-save]');
       saveBtn.onclick = async () => {

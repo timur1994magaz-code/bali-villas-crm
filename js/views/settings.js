@@ -151,7 +151,7 @@ export async function renderSettings(view, actions) {
       <div class="panel-head"><h3>🧪 Демо и очистка</h3></div>
       <div class="row">
         <button class="btn" id="seed">Загрузить демо-данные</button>
-        <button class="btn btn-danger" id="wipe">Удалить всё</button>
+        ${data.isOwner() ? '<button class="btn btn-danger" id="wipe">Удалить всё</button>' : '<span class="hint">Полная очистка доступна только владельцу</span>'}
       </div>
       <div class="hint" style="margin-top:10px">Демо добавит 2 виллы, 2 клиента и несколько броней, чтобы посмотреть работу календаря.</div>
     </div>
@@ -329,7 +329,8 @@ export async function renderSettings(view, actions) {
       await S.seedDemo(); toast('Демо-данные добавлены'); refresh();
     }
   };
-  view.querySelector('#wipe').onclick = async () => {
+  const wipeBtn = view.querySelector('#wipe');
+  if (wipeBtn) wipeBtn.onclick = async () => {
     if (await confirmDialog('Удалить ВСЕ виллы, брони, клиентов и файлы? Отменить нельзя.', { okText: 'Удалить всё' })) {
       await S.wipeAll(); toast('Всё удалено'); refresh();
     }

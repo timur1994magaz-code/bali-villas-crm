@@ -1,5 +1,6 @@
 // ===== Модалки брони: создание/редактирование и карточка брони с контактами клиента =====
 import * as S from './store.js';
+import * as data from './data.js';
 import { modal, closeModal, field, formData, formDiff, toast, confirmDialog, normalizeMoneyFields } from './ui.js';
 import { renderDocs } from './files-ui.js';
 import {
@@ -52,7 +53,7 @@ export function bookingForm(b, { onSaved } = {}) {
       ${field('notes', 'Заметки', { type: 'textarea', value: b.notes, rows: 3 })}
       <div id="conflict" class="hint"></div>`,
     footer: `
-      ${isNew ? '' : '<button class="btn btn-danger left" data-del>Удалить бронь</button>'}
+      ${isNew || !data.canDelete() ? '' : '<button class="btn btn-danger left" data-del>Удалить бронь</button>'}
       <button class="btn" data-cancel>Отмена</button>
       <button class="btn btn-primary" data-save>Сохранить</button>`,
     onMount(el) {

@@ -237,7 +237,15 @@ async function handleAuthed(req, res, url, method, user) {
       broadcast(tbl);
       return ok(res);
     }
-    if (method === 'DELETE') { store.delDoc(tbl, id, user.id); broadcast(tbl); return ok(res); }
+    if (method === 'DELETE') {
+      // удаление — только владельцу: сотрудник добавляет и правит, но не стирает
+      if (user.role !== 'admin') {
+        return fail(res, 403, 'Удалять записи может только владелец. Обратитесь к нему.');
+      }
+      store.delDoc(tbl, id, user.id);
+      broadcast(tbl);
+      return ok(res);
+    }
   }
 
   if (p === '/api/wipe' && method === 'POST') {
@@ -309,12 +317,18 @@ async function handleAuthed(req, res, url, method, user) {
       return ok(res, { file: updated });
     }
     if (method === 'DELETE') {
+      const f = store.getFile(id);
+      if (!f) return fail(res, 404, 'Файл не найден');
+      if (user.role !== 'admin' && store.fileAuthor(id) !== user.id) {
+        return fail(res, 403, 'Удалить можно только свои загрузки. Остальное — через владельца.');
+      }
       store.deleteFile(id);
       broadcast('files');
       return ok(res);
     }
   }
   if (p === '/api/files' && method === 'DELETE') {
+    if (user.role !== 'admin') return fail(res, 403, 'Удалять файлы записи может только владелец');
     const n = store.deleteFilesOf(q.get('ownerType'), q.get('ownerId'));
     broadcast('files');
     return ok(res, { deleted: n });

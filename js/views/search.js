@@ -13,7 +13,7 @@ function loadParams() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
     return { from: today(), months: 2, bedroomsMin: '', bedroomsMax: '', budget: '',
-      preferArea: '', onlyFree: true, ...saved };
+      budgetPeriod: 'month', preferArea: '', onlyFree: true, ...saved };
   } catch (e) {
     void e;
     return { from: today(), months: 2, onlyFree: true };
@@ -46,6 +46,7 @@ export function renderSearch(view, actions) {
       bedroomsMax: Number(p.bedroomsMax) || 0,
       budget,
       preferArea: p.preferArea || '',
+      budgetPeriod: p.budgetPeriod || 'month',
       onlyFree: !!p.onlyFree,
       onlyWithinBudget: !!budget,
     });
@@ -65,17 +66,22 @@ export function renderSearch(view, actions) {
             <input type="text" name="preferArea" value="${esc(p.preferArea || '')}" placeholder="Переренан, Чангу…">
             <span class="hint">не отсекает: такие виллы просто идут первыми</span></label>
         </div>
-        <div class="grid-3" style="margin-top:12px">
+        <div class="grid-4" style="margin-top:12px">
           <label class="field"><span>Спален от</span><input type="number" name="bedroomsMin" min="0" value="${esc(p.bedroomsMin || '')}" placeholder="2"></label>
           <label class="field"><span>Спален до</span><input type="number" name="bedroomsMax" min="0" value="${esc(p.bedroomsMax || '')}" placeholder="не важно"></label>
-          <label class="field"><span>Бюджет в месяц, Rp</span>
+          <label class="field"><span>Бюджет, Rp</span>
             <input type="text" name="budget" value="${esc(p.budget || '')}" placeholder="30 млн">
             <span class="hint">можно писать «30 млн», «30jt» или 30000000</span></label>
+          <label class="field"><span>Бюджет за период</span>
+            <select name="budgetPeriod">
+              <option value="month"${p.budgetPeriod !== 'night' ? ' selected' : ''}>в месяц</option>
+              <option value="night"${p.budgetPeriod === 'night' ? ' selected' : ''}>в сутки</option>
+            </select></label>
         </div>
         <div class="row" style="margin-top:12px">
           <label class="check"><input type="checkbox" name="onlyFree"${p.onlyFree ? ' checked' : ''}> Только полностью свободные на весь срок</label>
           <div class="spacer" style="margin-left:auto"></div>
-          <span class="hint">${fmtDate(from)} → ${fmtDate(to)} · ${nights} ${plural(nights, 'ночь', 'ночи', 'ночей')}${budget ? ` · бюджет ${moneyShort(budget)} в месяц` : ''}</span>
+          <span class="hint">${fmtDate(from)} → ${fmtDate(to)} · ${nights} ${plural(nights, 'ночь', 'ночи', 'ночей')}${budget ? ` · бюджет ${moneyShort(budget)} ${p.budgetPeriod === 'night' ? 'в сутки' : 'в месяц'}` : ''}</span>
         </div>
       </div>
 
@@ -98,6 +104,7 @@ export function renderSearch(view, actions) {
         months: get('months').value,
         to: get('to').value,
         preferArea: get('preferArea').value.trim(),
+        budgetPeriod: get('budgetPeriod').value,
         bedroomsMin: get('bedroomsMin').value,
         bedroomsMax: get('bedroomsMax').value,
         budget: get('budget').value.trim(),
@@ -136,7 +143,7 @@ export function renderSearch(view, actions) {
       const parts = [];
       if (p.bedroomsMin) parts.push(`спален от ${esc(p.bedroomsMin)}`);
       if (p.bedroomsMax) parts.push(`спален до ${esc(p.bedroomsMax)}`);
-      if (budget) parts.push(`бюджет ${moneyShort(budget)}`);
+      if (budget) parts.push(`бюджет ${moneyShort(budget)} ${p.budgetPeriod === 'night' ? 'в сутки' : 'в месяц'}`);
       if (p.onlyFree) parts.push('только полностью свободные');
       parts.push(`${fmtDateShort(from)} → ${fmtDateShort(to)}`);
       box.innerHTML = `<div class="empty-state"><div class="big">🔎</div><h3>Ничего не подошло</h3>
@@ -186,8 +193,8 @@ export function renderSearch(view, actions) {
           ${busyList}
         </div>
         <div class="search-money">
-          <div class="search-price ${r.overBudget ? 'over' : ''}">${r.price ? moneyShort(r.price.amount) : '—'}<span class="mute"> / мес</span></div>
-          ${r.price && r.price.approx ? '<div class="file-sub">по цене за ночь × 30</div>' : ''}
+          <div class="search-price ${r.overBudget ? 'over' : ''}">${r.price ? moneyShort(r.price.amount) : '—'}<span class="mute"> / ${r.byNight ? 'сутки' : 'мес'}</span></div>
+          ${r.price && r.price.approx ? `<div class="file-sub">${r.byNight ? 'из месячной цены ÷ 30' : 'по цене за ночь × 30'}</div>` : ''}
           ${r.periodTotal ? `<div class="file-sub">за срок ≈ ${moneyShort(r.periodTotal)}</div>` : ''}
           ${budget && r.price ? `<div class="file-sub ${r.overBudget ? 'over-text' : 'ok-text'}">${r.overBudget
             ? 'дороже на ' + moneyShort(r.price.amount - budget)

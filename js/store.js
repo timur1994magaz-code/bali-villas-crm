@@ -60,7 +60,7 @@ export function emptyClient() {
   return {
     id: db.uid(), name: '', phone: '', whatsapp: '', telegram: '', email: '',
     instagram: '', source: '', notes: '',
-    budget: '', wantBedrooms: '', wantArea: '',   // запрос клиента: бюджет, комнаты, желаемый район
+    budget: '', budgetPeriod: 'month', wantBedrooms: '', wantArea: '',   // запрос клиента
     country: '', passport: '',                     // остались для старых записей, в интерфейсе не показываются
     createdAt: new Date().toISOString(),
   };
@@ -289,6 +289,15 @@ export function monthlyPrice(v) {
   return null;
 }
 
+/** Цена за сутки: своя, а если её нет — из месячной по 30 ночей. */
+export function nightlyPrice(v) {
+  const night = num(v.ourPriceNight);
+  if (night) return { amount: night, approx: false };
+  const month = num(v.ourPriceMonth);
+  if (month) return { amount: month / 30, approx: true };
+  return null;
+}
+
 /**
  * Занятость виллы в периоде [from, to): свободные и занятые отрезки.
  * Отдельно считаем, с какой даты вилла свободна до конца периода —
@@ -336,12 +345,15 @@ export function availability(villaId, from, to) {
  * Возвращает список вилл с ценой в валюте бюджета и раскладом по свободным датам.
  */
 export function searchVillas({ from, to, bedroomsMin, bedroomsMax, budget,
-  preferArea = '', onlyFree = true, onlyWithinBudget = true } = {}) {
+  budgetPeriod = 'month', preferArea = '', onlyFree = true, onlyWithinBudget = true } = {}) {
   const wanted = String(preferArea || '').trim().toLowerCase();
+  const nights = from && to ? Math.max(1, daysBetween(from, to)) : 1;
   const months = from && to ? daysBetween(from, to) / 30.44 : 1;
+  const byNight = budgetPeriod === 'night';
 
   const rows = state.villas.map((v) => {
-    const price = monthlyPrice(v);
+    // короткий запрос сравниваем с ценой за сутки, длинный — с месячной
+    const price = byNight ? nightlyPrice(v) : monthlyPrice(v);
     const av = from && to ? availability(v.id, from, to) : null;
     const beds = num(v.bedrooms);
     return {
@@ -351,7 +363,8 @@ export function searchVillas({ from, to, bedroomsMin, bedroomsMax, budget,
       areaMatch: !!wanted && String(v.area || '').toLowerCase().includes(wanted),
       price,
       monthTotal: price ? price.amount : null,
-      periodTotal: price ? price.amount * months : null,
+      periodTotal: price ? price.amount * (byNight ? nights : months) : null,
+      byNight,
       availability: av,
       overBudget: budget && price ? price.amount > budget : false,
     };

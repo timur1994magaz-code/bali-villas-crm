@@ -184,6 +184,15 @@ export async function allFileRecords() {
   await db.eachFile((f) => out.push(f));
   return out.map((f) => ({ ...f, _blob: f.blob, _thumb: f.thumb }));
 }
+/* ---------- Права: кто вошёл ---------- */
+let _me = null;
+export function setMe(u) { _me = u || null; }
+export function me() { return _me; }
+/** Владелец — или локальный режим, где учётных записей нет вовсе. */
+export const isOwner = () => !isRemote() || !!(_me && _me.role === 'admin');
+/** Удалять записи может только владелец. Запрет дублируется на сервере. */
+export const canDelete = () => isOwner();
+
 /** Журнал изменений ведёт только свой сервер. */
 export const hasChangeLog = () => isServer();
 export async function listChanges(limit = 200, docId = null) {

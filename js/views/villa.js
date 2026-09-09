@@ -21,14 +21,15 @@ export async function renderVillaCard(view, actions, id) {
     <button class="btn btn-sm" id="v-edit">✎ Редактировать</button>
     <button class="btn btn-sm" id="v-photos">📸 Фото</button>
     <button class="btn btn-sm btn-primary" id="v-book">+ Бронь</button>
-    <button class="btn btn-sm btn-danger" id="v-del">Удалить</button>`;
+    ${data.canDelete() ? '<button class="btn btn-sm btn-danger" id="v-del">Удалить</button>' : ''}`;
   actions.querySelector('#v-edit').onclick = () => villaForm(v);
   actions.querySelector('#v-photos').onclick = () => {
     sessionStorage.setItem('villaTab', 'photos');
     renderVillaCard(view, actions, id);
   };
   actions.querySelector('#v-book').onclick = () => bookingForm(S.emptyBooking(v.id, today(), addDays(today(), 7)), { onSaved: () => rerender() });
-  actions.querySelector('#v-del').onclick = async () => {
+  const delBtn = actions.querySelector('#v-del');
+  if (delBtn) delBtn.onclick = async () => {
     if (await confirmDialog(`Удалить виллу «${v.name}» со всеми фото, документами и бронями?`)) {
       await S.deleteVilla(v.id); toast('Вилла удалена'); location.hash = '#/villas';
     }

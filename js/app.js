@@ -237,6 +237,7 @@ async function boot() {
       return;
     }
     if (!currentUser) return showLogin();
+    data.setMe(currentUser);          // права на удаление зависят от роли
     await startRealtime();
   }
   try {
