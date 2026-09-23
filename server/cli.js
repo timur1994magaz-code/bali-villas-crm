@@ -18,7 +18,7 @@ const genPassword = () => crypto.randomBytes(9).toString('base64url');
 function usage() {
   console.log(`Управление пользователями CRM:
 
-  node cli.js add ЛОГИН [--admin] [--password СТРОКА]
+  node cli.js add ЛОГИН [--admin | --assistant] [--password СТРОКА]
   node cli.js list
   node cli.js password ЛОГИН [--password СТРОКА]
   node cli.js delete ЛОГИН
@@ -33,16 +33,18 @@ if (cmd === 'add') {
   if (store.userByEmail(arg)) { console.error('Такой пользователь уже есть:', arg); process.exit(1); }
   const password = typeof flag('password') === 'string' ? flag('password') : genPassword();
   if (String(password).length < 8) { console.error('Пароль должен быть не короче 8 символов'); process.exit(1); }
-  const role = flag('admin') ? 'admin' : 'manager';
+  const role = flag('admin') ? 'admin' : flag('assistant') ? 'assistant' : 'manager';
   const u = store.createUser(arg, hashPassword(password), role);
-  console.log(`Создан пользователь: ${u.email} (${role === 'admin' ? 'владелец' : 'сотрудник'})`);
+  const ROLE_RU = { admin: 'владелец', manager: 'сотрудник', assistant: 'ассистент — без цен собственника' };
+  console.log(`Создан пользователь: ${u.email} (${ROLE_RU[role]})`);
   console.log(`Пароль: ${password}`);
   console.log('Передайте его сотруднику — второй раз пароль не показывается.');
 } else if (cmd === 'list') {
   const list = store.listUsers();
   if (!list.length) console.log('Пользователей нет.');
   for (const u of list) {
-    console.log(`${u.email}\t${u.role === 'admin' ? 'владелец' : 'сотрудник'}\t${String(u.created_at).slice(0, 10)}`);
+    const ru = { admin: 'владелец', manager: 'сотрудник', assistant: 'ассистент' }[u.role] || u.role;
+    console.log(`${u.email}\t${ru}\t${String(u.created_at).slice(0, 10)}`);
   }
 } else if (cmd === 'password') {
   const u = store.userByEmail(arg || '');

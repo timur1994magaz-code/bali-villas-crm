@@ -1,6 +1,7 @@
 // ===== Дашборд =====
 import * as S from '../store.js';
 import { bookingCard } from '../booking.js';
+import * as data from '../data.js';
 import {
   esc, money, moneyShort, num, STATUS, today, addDays, addMonths, startOfMonth, fmtRange, fmtDateShort,
   monthLabel, daysBetween,
@@ -44,13 +45,13 @@ export function renderDashboard(view) {
         <div class="stat-sub">${occ.busy} из ${occ.total} вилло-дней</div></div>
       <div class="stat"><div class="stat-label">Выручка месяца</div><div class="stat-value" style="color:var(--acc)">${moneyShort(Math.round(rev), 'IDR')}</div>
         <div class="stat-sub">по броням, пропорционально дням</div></div>
-      <div class="stat"><div class="stat-label">Платежи собственникам</div><div class="stat-value" style="color:var(--txt-dim)">${moneyShort(Math.round(ownerCost), 'IDR')}</div>
-        <div class="stat-sub">в месяц по всем виллам</div></div>
+      ${data.canSeeOwnerMoney() ? `<div class="stat"><div class="stat-label">Платежи собственникам</div><div class="stat-value" style="color:var(--txt-dim)">${moneyShort(Math.round(ownerCost), 'IDR')}</div>
+        <div class="stat-sub">в месяц по всем виллам</div></div>` : ''}
       <div class="stat clickable" id="stat-tasks"><div class="stat-label">Задачи</div>
         <div class="stat-value" style="color:${tc.overdue ? 'var(--danger)' : tc.today ? 'var(--warn)' : 'var(--acc)'}">${tc.open}</div>
         <div class="stat-sub">${tc.overdue ? `${tc.overdue} просрочено · ` : ''}${tc.today} на сегодня</div></div>
-      <div class="stat"><div class="stat-label">Расчётная маржа</div><div class="stat-value" style="color:var(--warn)">${moneyShort(Math.round(rev - ownerCost), 'IDR')}</div>
-        <div class="stat-sub">выручка минус аренда</div></div>
+      ${data.canSeeOwnerMoney() ? `<div class="stat"><div class="stat-label">Расчётная маржа</div><div class="stat-value" style="color:var(--warn)">${moneyShort(Math.round(rev - ownerCost), 'IDR')}</div>
+        <div class="stat-sub">выручка минус аренда</div></div>` : ''}
     </div>
 
     <div class="panel" id="dash-tasks">

@@ -192,6 +192,11 @@ export function me() { return _me; }
 export const isOwner = () => !isRemote() || !!(_me && _me.role === 'admin');
 /** Удалять записи может только владелец. Запрет дублируется на сервере. */
 export const canDelete = () => isOwner();
+/**
+ * Видит ли человек цену собственника и маржу.
+ * Ассистенту сервер их вообще не отдаёт — здесь только прячем пустые места.
+ */
+export const canSeeOwnerMoney = () => !isRemote() || !(_me && _me.role === 'assistant');
 
 /** Журнал изменений ведёт только свой сервер. */
 export const hasChangeLog = () => isServer();

@@ -121,6 +121,12 @@ function logChanges(tbl, id, before, after, userId) {
   return n;
 }
 
+export function getDoc(tbl, id) {
+  const r = db.prepare('select doc from docs where tbl = ? and id = ?').get(tbl, id);
+  if (!r) return null;
+  try { return JSON.parse(r.doc); } catch (e) { void e; return null; }
+}
+
 export function putDoc(tbl, id, doc, userId) {
   const prevRow = db.prepare('select doc from docs where tbl = ? and id = ?').get(tbl, id);
   const prev = prevRow ? JSON.parse(prevRow.doc) : null;

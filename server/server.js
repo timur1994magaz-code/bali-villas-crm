@@ -17,6 +17,18 @@ const MAX_UPLOAD = Number(process.env.CRM_MAX_UPLOAD || 512) * 1024 * 1024;
 const MAX_JSON = 4 * 1024 * 1024;
 const VERSION = '1.0.0';
 
+// Роли: admin — владелец, manager — сотрудник, assistant — ассистент без доступа
+// к экономике сделки. Поля цены собственника ассистенту не отдаются вовсе:
+// прятать их только в интерфейсе бесполезно, данные всё равно уедут в браузер.
+const OWNER_MONEY_FIELDS = ['ownerPrice', 'ownerPeriod'];
+const seesOwnerMoney = (user) => user.role === 'admin' || user.role === 'manager';
+
+function stripOwnerMoney(villa) {
+  const copy = { ...villa };
+  for (const f of OWNER_MONEY_FIELDS) delete copy[f];
+  return copy;
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
@@ -209,12 +221,18 @@ async function handleAuthed(req, res, url, method, user) {
   }
 
   /* ---- записи ---- */
-  if (p === '/api/data' && method === 'GET') return ok(res, store.allDocs());
+  if (p === '/api/data' && method === 'GET') {
+    const docs = store.allDocs();
+    if (!seesOwnerMoney(user)) docs.villas = docs.villas.map(stripOwnerMoney);
+    return ok(res, docs);
+  }
 
   // журнал изменений: кто, когда и что поправил
   if (p === '/api/changes' && method === 'GET') {
     const limit = Math.min(1000, Math.max(1, Number(q.get('limit')) || 200));
-    return ok(res, { changes: store.listChanges(limit, q.get('doc') || null) });
+    let changes = store.listChanges(limit, q.get('doc') || null);
+    if (!seesOwnerMoney(user)) changes = changes.filter((c) => !OWNER_MONEY_FIELDS.includes(c.field));
+    return ok(res, { changes });
   }
 
   const rowMatch = p.match(/^\/api\/row\/([a-z_]+)\/(.+)$/);
@@ -233,6 +251,14 @@ async function handleAuthed(req, res, url, method, user) {
     if (!store.TABLES.includes(tbl)) return fail(res, 400, 'Неизвестная таблица');
     if (method === 'PUT') {
       const doc = await readJson(req);
+      // ассистент не получал цену собственника — значит, и затереть её не может:
+      // возвращаем скрытые поля из текущей записи
+      if (tbl === 'villas' && !seesOwnerMoney(user)) {
+        const prev = store.getDoc(tbl, id);
+        if (prev) for (const f of OWNER_MONEY_FIELDS) {
+          if (prev[f] !== undefined) doc[f] = prev[f];
+        }
+      }
       store.putDoc(tbl, id, doc, user.id);
       broadcast(tbl);
       return ok(res);
@@ -357,7 +383,9 @@ async function handleAuthed(req, res, url, method, user) {
       }
       if (!password || String(password).length < 8) return fail(res, 400, 'Пароль должен быть не короче 8 символов');
       if (store.userByEmail(email)) return fail(res, 409, 'Такой пользователь уже есть');
-      const created = store.createUser(email, auth.hashPassword(password), role === 'admin' ? 'admin' : 'manager');
+      const allowed = ['admin', 'manager', 'assistant'];
+      const created = store.createUser(email, auth.hashPassword(password),
+        allowed.includes(role) ? role : 'manager');
       return ok(res, { user: created });
     }
   }

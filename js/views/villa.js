@@ -78,9 +78,9 @@ export async function renderVillaCard(view, actions, id) {
     const occ = S.occupancy(startOfMonth(today()), addMonths(startOfMonth(today()), 1), v.id);
     body.innerHTML = `
       <div class="stat-row" style="margin-bottom:14px">
-        <div class="stat"><div class="stat-label">Цена собственника</div><div class="stat-value">${moneyShort(v.ownerPrice, 'IDR')}</div><div class="stat-sub">${PERIODS[v.ownerPeriod] || ''}</div></div>
+        ${data.canSeeOwnerMoney() ? `<div class="stat"><div class="stat-label">Цена собственника</div><div class="stat-value">${moneyShort(v.ownerPrice, 'IDR')}</div><div class="stat-sub">${PERIODS[v.ownerPeriod] || ''}</div></div>` : ''}
         <div class="stat"><div class="stat-label">Наша цена</div><div class="stat-value" style="color:var(--acc)">${v.ourPriceMonth ? moneyShort(v.ourPriceMonth, 'IDR') : moneyShort(v.ourPriceNight, 'IDR')}</div><div class="stat-sub">${v.ourPriceMonth ? 'в месяц' : 'за ночь'}${v.ourPriceMonth && v.ourPriceNight ? ' · ' + moneyShort(v.ourPriceNight, 'IDR') + ' за ночь' : ''}</div></div>
-        <div class="stat"><div class="stat-label">Маржа в месяц</div><div class="stat-value" style="color:var(--warn)">${m ? moneyShort(Math.round(m.profit), 'IDR') : '—'}</div><div class="stat-sub">${m ? m.pct.toFixed(0) + '% к цене собственника' : 'укажите обе цены'}</div></div>
+        ${data.canSeeOwnerMoney() ? `<div class="stat"><div class="stat-label">Маржа в месяц</div><div class="stat-value" style="color:var(--warn)">${m ? moneyShort(Math.round(m.profit), 'IDR') : '—'}</div><div class="stat-sub">${m ? m.pct.toFixed(0) + '% к цене собственника' : 'укажите обе цены'}</div></div>` : ''}
         <div class="stat"><div class="stat-label">Занятость (тек. месяц)</div><div class="stat-value">${occ.pct.toFixed(0)}%</div><div class="stat-sub">${occ.busy} из ${occ.total} дней</div></div>
       </div>
 
@@ -507,15 +507,15 @@ export function villaForm(v) {
       </div>
 
       <div class="form-section"><h4>Цены</h4>
-        <div class="grid-2">
+        ${data.canSeeOwnerMoney() ? `<div class="grid-2">
           ${field('ownerPrice', 'Цена собственника, Rp', { type: 'money', value: v.ownerPrice, placeholder: '36 млн', floor: 1e6 })}
           ${field('ownerPeriod', 'Период', { options: Object.entries(PERIODS).map(([value, label]) => ({ value, label })), value: v.ownerPeriod })}
-        </div>
+        </div>` : ''}
         <div class="grid-2" style="margin-top:10px">
           ${field('ourPriceNight', 'Наша цена за ночь, Rp', { type: 'money', value: v.ourPriceNight, placeholder: '3,1 млн', floor: 1e5 })}
           ${field('ourPriceMonth', 'Наша цена в месяц, Rp', { type: 'money', value: v.ourPriceMonth, placeholder: '58 млн', floor: 1e6 })}
         </div>
-        <div class="hint" id="margin-hint" style="margin-top:8px"></div>
+        ${data.canSeeOwnerMoney() ? '<div class="hint" id="margin-hint" style="margin-top:8px"></div>' : ''}
       </div>
 
       <div class="form-section"><h4>Оригиналы фото</h4>
@@ -531,7 +531,8 @@ export function villaForm(v) {
       const upd = () => {
         const d = formData(el);
         const m = S.villaMargin({ ...v, ...d });
-        el.querySelector('#margin-hint').innerHTML = m
+        const hintBox = el.querySelector('#margin-hint');
+        if (hintBox) hintBox.innerHTML = m
           ? `Маржа: <b style="color:var(--warn)">${moneyShort(Math.round(m.profit), 'IDR')}</b> в месяц (${m.pct.toFixed(0)}% к цене собственника)`
           : 'Укажите цену собственника и нашу цену — посчитаем маржу.';
       };
