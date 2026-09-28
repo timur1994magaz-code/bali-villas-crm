@@ -17,17 +17,28 @@ const inRange = (lat, lng) =>
   && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
   && !(lat === 0 && lng === 0);
 
+// Все виллы этой CRM — в Индонезии. Проверка нужна не для красоты: в разметке
+// страницы Google лежит точка по умолчанию для локали, и без проверки вилла
+// уезжала под Москву. Координатам из самого адреса доверяем без оглядки,
+// вытащенным из вёрстки — только в этих границах.
+const INDONESIA = { latMin: -11.5, latMax: 6.5, lngMin: 94.5, lngMax: 141.5 };
+const looksIndonesian = (lat, lng) =>
+  lat >= INDONESIA.latMin && lat <= INDONESIA.latMax
+  && lng >= INDONESIA.lngMin && lng <= INDONESIA.lngMax;
+
 /**
  * Координаты из адреса или тела страницы.
  * Порядок важен: сначала точка самого места, потом центр карты,
  * и только в конце — то, что попалось в вёрстке.
+ * source: 'url' — доверяем; 'body' — сверяем с границами страны.
  */
-export function coordsFromText(text) {
+export function coordsFromText(text, source = 'url') {
   if (!text) return null;
   const raw = String(text);
   let decoded = raw;
   try { decoded = decodeURIComponent(raw); } catch (e) { void e; }
   const hays = decoded === raw ? [raw] : [decoded, raw];
+  const trust = (lat, lng) => source === 'url' || looksIndonesian(lat, lng);
 
   // [широта, долгота]
   const latLngPats = [
@@ -42,23 +53,24 @@ export function coordsFromText(text) {
   for (const p of latLngPats) {
     for (const hay of hays) {
       const m = hay.match(p);
-      if (m && inRange(parseFloat(m[1]), parseFloat(m[2]))) {
-        return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
-      }
+      if (!m) continue;
+      const lat = parseFloat(m[1]);
+      const lng = parseFloat(m[2]);
+      if (inRange(lat, lng) && trust(lat, lng)) return { lat, lng };
     }
   }
 
-  // [долгота, широта] — так Google кладёт точку в начальное состояние страницы
-  const lngLatPats = [
-    /\[null,null,(-?\d{1,3}\.\d{4,}),(-?\d{1,3}\.\d{4,})\]/,
-    /center=(-?\d{1,3}\.\d{4,})%2C(-?\d{1,3}\.\d{4,})/i,
-  ];
+  // [долгота, широта] — в таком порядке Google кладёт точку в параметр center.
+  // Начальное состояние страницы в таком же виде брать нельзя: там лежит
+  // точка по умолчанию для локали, а не искомое место.
+  const lngLatPats = [/center=(-?\d{1,3}\.\d{4,})%2C(-?\d{1,3}\.\d{4,})/i];
   for (const p of lngLatPats) {
     for (const hay of hays) {
       const m = hay.match(p);
-      if (m && inRange(parseFloat(m[2]), parseFloat(m[1]))) {
-        return { lat: parseFloat(m[2]), lng: parseFloat(m[1]) };
-      }
+      if (!m) continue;
+      const lat = parseFloat(m[2]);
+      const lng = parseFloat(m[1]);
+      if (inRange(lat, lng) && trust(lat, lng)) return { lat, lng };
     }
   }
   return null;
@@ -180,7 +192,7 @@ export async function resolveMapLink(rawUrl) {
 
     const body = (await res.text()).slice(0, MAX_BODY);
     place = place || placeFromUrl(current) || placeFromBody(body);
-    const found = coordsFromText(current) || coordsFromText(body);
+    const found = coordsFromText(current, 'url') || coordsFromText(body, 'body');
     if (found) return { ok: true, ...found, finalUrl: current, place };
 
     // тело без координат: возможно, внутри лежит ссылка на настоящую страницу места
