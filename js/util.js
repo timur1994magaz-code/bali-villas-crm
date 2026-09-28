@@ -125,6 +125,16 @@ export function parseCoords(input) {
 export function mapEmbedUrl(lat, lng, z = 16) {
   return `https://www.google.com/maps?q=${lat},${lng}&z=${z}&hl=ru&output=embed`;
 }
+/**
+ * Карта по названию места, когда точных координат нет.
+ * Google ищет по тексту и показывает результат — лучше пустого блока.
+ */
+export function mapEmbedQueryUrl(query) {
+  return `https://www.google.com/maps?q=${encodeURIComponent(String(query).trim())}&hl=ru&output=embed`;
+}
+export function mapSearchUrl(query) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(query).trim())}`;
+}
 export function mapLinkUrl(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }

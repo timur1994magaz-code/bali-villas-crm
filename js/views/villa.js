@@ -7,7 +7,7 @@ import { bookingForm, bookingCard, plural } from '../booking.js';
 import { taskRow, bindTaskList, taskForm } from './tasks.js';
 import {
   esc, money, moneyShort, num, PERIODS, STATUS, fmtDate, fmtDateShort, fmtRange,
-  parseCoords, mapEmbedUrl, mapLinkUrl, phoneHref, waHref, today, addMonths,
+  parseCoords, mapEmbedUrl, mapEmbedQueryUrl, mapSearchUrl, mapLinkUrl, phoneHref, waHref, today, addMonths,
   startOfMonth, daysInMonth, dowIndex, DOW, MONTHS, ymd, parseYmd, daysBetween, addDays,
 } from '../util.js';
 
@@ -259,9 +259,15 @@ export async function renderVillaCard(view, actions, id) {
   }
 
   // ---------- Локация ----------
+  /** Запрос для карты по названию, когда точных координат нет. */
+  function mapQueryOf(place) {
+    return [place || v.name, v.area, 'Bali'].filter(Boolean).join(', ');
+  }
+
   function drawLocation() {
     const coords = v.lat && v.lng ? { lat: Number(v.lat), lng: Number(v.lng) } : parseCoords(v.mapUrl);
     const hasLink = !!String(v.mapUrl || '').trim();
+    const query = mapQueryOf(v.mapPlace);
 
     body.innerHTML = `
       <div class="panel">
@@ -285,13 +291,21 @@ export async function renderVillaCard(view, actions, id) {
         <div class="map-box" id="map-box">
           ${coords
             ? `<iframe src="${mapEmbedUrl(coords.lat, coords.lng)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Карта"></iframe>`
-            : `<div class="map-empty">
-                 ${hasLink
-                   ? 'Определяем точку по ссылке…'
-                   : 'Вставьте ссылку на Google Maps — карта появится здесь.'}
-               </div>`}
+            : v.mapPlace
+              ? `<iframe src="${mapEmbedQueryUrl(v.mapPlace)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Карта по адресу"></iframe>`
+              : hasLink
+                ? '<div class="map-empty">Определяем точку по ссылке…</div>'
+                : `<iframe src="${mapEmbedQueryUrl(query)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Карта по названию"></iframe>`}
         </div>
-        ${coords && v.mapPlace ? `<div class="hint" style="margin-top:10px">📌 ${esc(v.mapPlace)}</div>` : ''}
+        ${coords
+          ? (v.mapPlace ? `<div class="hint" style="margin-top:10px">📌 ${esc(v.mapPlace)}</div>` : '')
+          : v.mapPlace
+            ? `<div class="hint" style="margin-top:10px">📌 ${esc(v.mapPlace)}
+                 <span class="mute">— карта по адресу из ссылки; точные координаты можно задать вручную.</span></div>`
+            : !hasLink
+              ? `<div class="hint" style="margin-top:10px">Карта показана поиском по названию «${esc(query)}» — это не точная точка.
+                   Вставьте ссылку на Google Maps, чтобы закрепить её.</div>`
+              : ''}
       </div>`;
 
     const status = body.querySelector('#map-status');
@@ -300,22 +314,30 @@ export async function renderVillaCard(view, actions, id) {
       box.hidden = !box.hidden;
     };
 
-    /** Пытаемся получить точку: сначала из самой ссылки, потом силами сервера. */
+    /**
+     * Пытаемся получить точку: сначала из самой ссылки, потом силами сервера.
+     * Возвращаем результат всегда: название места бывает известно и без координат.
+     */
     async function resolve(link, { quiet = false } = {}) {
       const local = parseCoords(link);
-      if (local) return { ...local, place: '' };
+      if (local) return { ok: true, ...local, place: '' };
       if (!data.canResolveMaps()) {
         if (!quiet) toast('Короткую ссылку разворачивает только свой сервер — впишите координаты вручную', true);
-        return null;
+        return { ok: false, place: '', reason: 'Разворачивать ссылки умеет только свой сервер' };
       }
       status.textContent = 'Разворачиваем ссылку…';
       try {
         const r = await data.resolveMapLink(link);
         status.textContent = '';
-        return { lat: r.lat, lng: r.lng, place: r.place || '' };
+        if (r && r.ok && r.lat != null && r.lng != null) {
+          return { ok: true, lat: r.lat, lng: r.lng, place: r.place || '' };
+        }
+        const why = (r && r.reason) || 'Точку определить не удалось';
+        status.innerHTML = `<span style="color:var(--warn)">${esc(why)}</span>`;
+        return { ok: false, place: (r && r.place) || '', query: (r && r.query) || '', reason: why };
       } catch (e) {
         status.innerHTML = `<span style="color:var(--warn)">${esc(e.message)}</span>`;
-        return null;
+        return { ok: false, place: '', reason: e.message };
       }
     }
 
@@ -324,26 +346,42 @@ export async function renderVillaCard(view, actions, id) {
       let lat = d.lat, lng = d.lng, place = v.mapPlace || '';
       if (!lat || !lng) {
         const r = await resolve(d.mapUrl);
-        if (r) { lat = r.lat; lng = r.lng; place = r.place || place; }
+        if (r.ok) { lat = r.lat; lng = r.lng; }
+        if (r.place) place = r.place;        // название пригодится для карты по поиску
       }
       await S.saveVilla({ ...(S.villa(v.id) || v), mapUrl: d.mapUrl, lat, lng, mapPlace: place });
       toast(lat && lng ? 'Локация сохранена' : 'Ссылка сохранена, но точку определить не удалось', !(lat && lng));
       rerender();
     };
 
-    // ссылка есть, а точки нет — определяем сами, без нажатий
-    if (hasLink && !coords) {
+    // Ссылка есть, точки нет и адрес ещё не разобран — определяем сами, без нажатий.
+    // Если адрес уже известен, карта нарисована по нему: сервер дёргать незачем.
+    if (hasLink && !coords && !v.mapPlace) {
       resolve(v.mapUrl, { quiet: true }).then(async (r) => {
-        if (!r) {
+        if (!r.ok) {
+          // Точки нет. Если Google свёл ссылку к адресу или Plus Code — строим карту
+          // по нему: это ровно то место. Иначе ищем по названию виллы, но честно
+          // предупреждаем, что это догадка.
+          const exact = !!r.query;
+          const q = exact ? r.query : mapQueryOf(r.place || v.mapPlace);
           const box = body.querySelector('#map-box');
           if (box) {
-            box.innerHTML = `<div class="map-empty">
-              Не получилось определить точку по этой ссылке.
-              <div style="margin-top:10px" class="row" style="justify-content:center">
-                <a class="btn btn-sm" href="${esc(v.mapUrl)}" target="_blank" rel="noopener">Открыть ссылку ↗</a>
-              </div>
-              <div class="hint" style="margin-top:8px">Откройте её, скопируйте адрес из строки браузера и вставьте сюда — либо задайте координаты вручную.</div>
-            </div>`;
+            box.innerHTML = `<iframe src="${mapEmbedQueryUrl(q)}" loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade" title="Карта"></iframe>`;
+            box.insertAdjacentHTML('afterend', exact
+              ? `<div class="hint" style="margin-top:10px">📌 ${esc(q)}
+                   <span class="mute">— в ссылке был адрес, а не точка на карте; координаты можно задать вручную.</span>
+                 </div>`
+              : `<div class="hint" style="margin-top:10px">
+                   Точку по ссылке получить не вышло, карта показана поиском по «${esc(q)}» — это не точное место.
+                   <a href="${esc(v.mapUrl)}" target="_blank" rel="noopener">Откройте ссылку ↗</a>
+                   и вставьте сюда адрес из строки браузера либо задайте координаты вручную.
+                 </div>`);
+          }
+          // адрес пригодится и дальше: по нему карта строится без обращения к серверу
+          const remember = r.query || r.place;
+          if (remember && remember !== v.mapPlace) {
+            await S.saveVilla({ ...(S.villa(v.id) || v), mapPlace: remember });
           }
           return;
         }
