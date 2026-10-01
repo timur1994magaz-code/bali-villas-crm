@@ -127,6 +127,37 @@ function drawTimeline(view, redraw) {
   const scroll = view.querySelector('#scroll');
   const tIdx = daysBetween(from, today());
   if (scroll && tIdx > 0 && tIdx < total) scroll.scrollLeft = Math.max(0, tIdx * px - 240);
+
+  fitTimelineHeight(scroll);
+}
+
+/**
+ * Высота таблицы под окно: прокрутка вилл уходит внутрь таблицы,
+ * и строка дат остаётся приклеенной сверху, а имена вилл — слева.
+ * Пересчитываем при изменении размера окна.
+ */
+let unfit = null;
+function fitTimelineHeight(scroll) {
+  if (unfit) { unfit(); unfit = null; }
+  if (!scroll) return;
+
+  const fit = () => {
+    if (!scroll.isConnected) { if (unfit) { unfit(); unfit = null; } return; }
+    const top = scroll.getBoundingClientRect().top;
+    // 24 px — воздух снизу, чтобы рамка не упиралась в край экрана
+    let h = Math.max(260, Math.round(window.innerHeight - top - 24));
+    scroll.style.maxHeight = h + 'px';
+    // под таблицей есть подпись: если из-за неё поехала и сама страница,
+    // ужимаем таблицу — крутить два раза неудобно
+    const extra = document.documentElement.scrollHeight - window.innerHeight;
+    if (extra > 0) {
+      h = Math.max(260, h - extra);
+      scroll.style.maxHeight = h + 'px';
+    }
+  };
+  fit();
+  window.addEventListener('resize', fit);
+  unfit = () => window.removeEventListener('resize', fit);
 }
 
 function step(c, dir) {
