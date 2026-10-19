@@ -9,17 +9,62 @@ import {
   esc, money, moneyShort, num, STATUS, fmtRange, fmtDate, phoneHref, waHref, tgHref, sortBy, today,
 } from '../util.js';
 
+/** Неактуальные клиенты не удаляются, а убираются из рабочего списка. */
+export const isArchived = (c) => !!(c && c.archived);
+
 export function renderClientsList(view, actions) {
+  let group = sessionStorage.getItem('clientsGroup') || 'active';
   actions.innerHTML = `
     <input class="search" id="c-search" type="search" placeholder="Поиск клиента, телефона, e-mail…">
+    <div class="seg" id="c-seg">
+      <button data-group="active">Актуальные</button>
+      <button data-group="archived">Не актуальные</button>
+      <button data-group="all">Все</button>
+    </div>
     <button class="btn btn-primary" id="c-add">+ Клиент</button>`;
   let q = '';
   actions.querySelector('#c-search').oninput = (e) => { q = e.target.value.toLowerCase(); draw(); };
   actions.querySelector('#c-add').onclick = () => clientForm(S.emptyClient());
+  actions.querySelectorAll('#c-seg button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.group === group);
+    b.onclick = () => {
+      group = b.dataset.group;
+      sessionStorage.setItem('clientsGroup', group);
+      actions.querySelectorAll('#c-seg button').forEach((x) => x.classList.toggle('active', x === b));
+      draw();
+      window.scrollTo(0, 0);        // другой список — показываем с начала
+    };
+  });
+
+  /** Перерисовка без прыжка: строка уходит в другой список, а экран остаётся на месте. */
+  function drawKeepingScroll() {
+    const y = window.scrollY;
+    draw();
+    if (y && Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y);
+  }
+
+  async function setArchived(c, on) {
+    const fresh = S.client(c.id) || c;
+    await S.saveClient({
+      ...fresh,
+      archived: on,
+      archivedAt: on ? today() : '',
+    });
+    toast(on ? `«${c.name}» — не актуален` : `«${c.name}» снова в работе`);
+    drawKeepingScroll();
+  }
 
   function draw() {
-    const list = sortBy(S.state.clients, 'name').filter((c) => !q ||
-      [c.name, c.phone, c.whatsapp, c.telegram, c.email, c.wantArea, c.source].join(' ').toLowerCase().includes(q));
+    const archivedCount = S.state.clients.filter(isArchived).length;
+    const segArchived = actions.querySelector('[data-group="archived"]');
+    if (segArchived) {
+      segArchived.innerHTML = `Не актуальные${archivedCount ? ` <span class="mute">${archivedCount}</span>` : ''}`;
+    }
+
+    const list = sortBy(S.state.clients, 'name')
+      .filter((c) => (group === 'all' ? true : group === 'archived' ? isArchived(c) : !isArchived(c)))
+      .filter((c) => !q ||
+        [c.name, c.phone, c.whatsapp, c.telegram, c.email, c.wantArea, c.source].join(' ').toLowerCase().includes(q));
     if (!S.state.clients.length) {
       view.innerHTML = `<div class="empty-state"><div class="big">👤</div><h3>Клиентов пока нет</h3>
         <p>Клиенты появляются автоматически, когда вы создаёте бронь, либо добавьте вручную.</p>
@@ -27,15 +72,23 @@ export function renderClientsList(view, actions) {
       view.querySelector('#e-add').onclick = () => clientForm(S.emptyClient());
       return;
     }
+    if (!list.length) {
+      view.innerHTML = `<div class="empty-state">${
+        group === 'archived'
+          ? 'Неактуальных клиентов нет. Галочка в последнем столбце убирает клиента из рабочего списка сюда.'
+          : q ? 'Никто не найден' : 'В этом списке пусто'}</div>`;
+      return;
+    }
+
     view.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>Клиент</th><th>Телефон</th><th>WhatsApp / TG</th><th>E-mail</th><th class="num">Комнат</th><th>Район</th><th class="num">Бюджет</th><th>Проживаний</th><th>Текущее / ближайшее</th><th class="num">Оплачено</th></tr></thead>
+      <thead><tr><th>Клиент</th><th>Телефон</th><th>WhatsApp / TG</th><th>E-mail</th><th class="num">Комнат</th><th>Район</th><th class="num">Бюджет</th><th>Проживаний</th><th>Текущее / ближайшее</th><th class="num">Оплачено</th><th class="nowrap">Не актуален</th></tr></thead>
       <tbody>${list.map((c) => {
         const bs = S.bookingsOfClient(c.id);
         const cur = bs.find((b) => b.dateFrom <= today() && today() < b.dateTo)
           || bs.filter((b) => b.dateFrom > today()).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom))[0];
         const paid = bs.reduce((s, b) => s + num(b.prepaid), 0);
         const v = cur ? S.villa(cur.villaId) : null;
-        return `<tr class="clickable" data-id="${c.id}">
+        return `<tr class="clickable${isArchived(c) ? ' row-archived' : ''}" data-id="${c.id}">
           <td><b>${esc(c.name)}</b>${c.source ? `<div class="file-sub">${esc(c.source)}</div>` : ''}</td>
           <td class="nowrap">${esc(c.phone || '—')}</td>
           <td class="nowrap">${esc(c.whatsapp || '')} ${esc(c.telegram || '')}</td>
@@ -48,10 +101,27 @@ export function renderClientsList(view, actions) {
           <td>${bs.length}</td>
           <td>${cur ? `${esc(v ? v.name : '')} <span class="file-sub">${fmtRange(cur.dateFrom, cur.dateTo)}</span>` : '—'}</td>
           <td class="num">${paid ? moneyShort(paid, 'IDR') : '—'}</td>
+          <td class="archive-cell">
+            <label class="check" title="${isArchived(c) ? 'Вернуть в работу' : 'Убрать из рабочего списка'}">
+              <input type="checkbox" data-arch="${c.id}"${isArchived(c) ? ' checked' : ''}>
+            </label>
+            ${isArchived(c) && c.archivedAt ? `<div class="file-sub">с ${esc(c.archivedAt)}</div>` : ''}
+          </td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
+
     view.querySelectorAll('tr[data-id]').forEach((tr) => {
-      tr.onclick = () => { location.hash = '#/client/' + tr.dataset.id; };
+      tr.onclick = (e) => {
+        if (e.target.closest('.archive-cell')) return;   // галочка — не переход в карточку
+        location.hash = '#/client/' + tr.dataset.id;
+      };
+    });
+    view.querySelectorAll('[data-arch]').forEach((chk) => {
+      chk.onclick = (e) => e.stopPropagation();
+      chk.onchange = () => {
+        const c = S.client(chk.dataset.arch);
+        if (c) setArchived(c, chk.checked);
+      };
     });
   }
   draw();
@@ -65,9 +135,16 @@ export function renderClientCard(view, actions, id) {
     <a class="btn btn-sm" href="#/clients">← К списку</a>
     <button class="btn btn-sm" id="c-edit">✎ Редактировать</button>
     <button class="btn btn-sm" id="c-doc">📎 Паспорт / договор</button>
+    <button class="btn btn-sm" id="c-arch">${isArchived(c) ? '↩ Вернуть в работу' : '🗂 Не актуален'}</button>
     <button class="btn btn-sm btn-primary" id="c-book">+ Бронь клиенту</button>
     ${data.canDelete() ? '<button class="btn btn-sm btn-danger" id="c-del">Удалить</button>' : ''}`;
   actions.querySelector('#c-edit').onclick = () => clientForm(c);
+  actions.querySelector('#c-arch').onclick = async () => {
+    const on = !isArchived(c);
+    await S.saveClient({ ...(S.client(c.id) || c), archived: on, archivedAt: on ? today() : '' });
+    toast(on ? 'Клиент убран из рабочего списка' : 'Клиент снова в работе');
+    renderClientCard(view, actions, id);
+  };
   actions.querySelector('#c-doc').onclick = () => {
     const input = view.querySelector('#c-docs [data-input]');
     if (input) input.click();
@@ -91,6 +168,10 @@ export function renderClientCard(view, actions, id) {
   const billed = bs.reduce((s, b) => s + num(b.priceTotal) + num(b.cleaningFee), 0);
 
   view.innerHTML = `
+    ${isArchived(c) ? `<div class="panel archived-note">
+      🗂 <b>Не актуален</b>${c.archivedAt ? ` <span class="mute">с ${esc(c.archivedAt)}</span>` : ''}
+      <span class="mute">— клиент убран из рабочего списка. Данные, брони и документы на месте.</span>
+    </div>` : ''}
     <div class="stat-row" style="margin-bottom:14px">
       <div class="stat"><div class="stat-label">Проживаний</div><div class="stat-value">${bs.length}</div><div class="stat-sub">${nightsTotal} ${plural(nightsTotal, 'ночь', 'ночи', 'ночей')} всего</div></div>
       <div class="stat"><div class="stat-label">Начислено</div><div class="stat-value">${moneyShort(billed, 'IDR')}</div></div>

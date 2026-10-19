@@ -61,6 +61,7 @@ export function emptyClient() {
     id: db.uid(), name: '', phone: '', whatsapp: '', telegram: '', email: '',
     instagram: '', source: '', notes: '',
     budget: '', budgetPeriod: 'month', wantBedrooms: '', wantArea: '',   // запрос клиента
+    archived: false, archivedAt: '',    // «не актуален»: убран из рабочего списка, но не удалён
     country: '', passport: '',                     // остались для старых записей, в интерфейсе не показываются
     createdAt: new Date().toISOString(),
   };

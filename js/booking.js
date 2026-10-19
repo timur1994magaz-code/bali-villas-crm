@@ -13,8 +13,16 @@ const statusOptions = Object.entries(STATUS).map(([value, s]) => ({ value, label
 export function bookingForm(b, { onSaved } = {}) {
   const isNew = !S.booking(b.id);
   const villaOpts = S.state.villas.map((v) => ({ value: v.id, label: v.name }));
-  const clientOpts = [{ value: '', label: '— без клиента (блок/ремонт) —' }]
-    .concat(S.state.clients.map((c) => ({ value: c.id, label: c.name + (c.phone ? ` · ${c.phone}` : '') })));
+  // неактуальные клиенты из списка не убираем (на них могут висеть старые брони),
+  // но уводим вниз и подписываем, чтобы не выбрать по ошибке
+  const clientOpts = [{ value: '', label: '— без клиента (блок/ремонт) —' }].concat(
+    [...S.state.clients]
+      .sort((a, b2) => (a.archived ? 1 : 0) - (b2.archived ? 1 : 0)
+        || String(a.name || '').localeCompare(String(b2.name || ''), 'ru'))
+      .map((c) => ({
+        value: c.id,
+        label: c.name + (c.phone ? ` · ${c.phone}` : '') + (c.archived ? ' · не актуален' : ''),
+      })));
 
   if (!villaOpts.length) { toast('Сначала добавьте хотя бы одну виллу', true); return; }
 
