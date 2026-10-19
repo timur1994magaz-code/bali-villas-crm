@@ -80,32 +80,46 @@ export function renderClientsList(view, actions) {
       return;
     }
 
-    view.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>Клиент</th><th>Телефон</th><th>WhatsApp / TG</th><th>E-mail</th><th class="num">Комнат</th><th>Район</th><th class="num">Бюджет</th><th>Проживаний</th><th>Текущее / ближайшее</th><th class="num">Оплачено</th><th class="nowrap">Не актуален</th></tr></thead>
+    // Столбцы сведены так, чтобы таблица помещалась в экран без прокрутки вбок:
+    // контакты в одной ячейке, запрос клиента в одной, брони в одной.
+    view.innerHTML = `<div class="table-wrap"><table class="clients-table">
+      <thead><tr>
+        <th>Клиент</th><th>Контакты</th>
+        <th class="num">Комнат</th><th>Район</th><th class="num">Бюджет</th>
+        <th>Брони</th><th class="archive-head" title="Не актуален">🗂</th>
+      </tr></thead>
       <tbody>${list.map((c) => {
         const bs = S.bookingsOfClient(c.id);
         const cur = bs.find((b) => b.dateFrom <= today() && today() < b.dateTo)
           || bs.filter((b) => b.dateFrom > today()).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom))[0];
         const paid = bs.reduce((s, b) => s + num(b.prepaid), 0);
         const v = cur ? S.villa(cur.villaId) : null;
+
+        // почтой с клиентами не работают — в списке её не показываем
+        const contacts = [
+          c.telegram ? `<a class="c-link" href="${tgHref(c.telegram)}" target="_blank" rel="noopener">${esc(c.telegram)}</a>` : '',
+          c.whatsapp ? `<a class="c-link" href="${waHref(c.whatsapp)}" target="_blank" rel="noopener" title="WhatsApp ${esc(c.whatsapp)}">💬</a>` : '',
+          c.phone ? `<a class="c-link" href="${phoneHref(c.phone)}" title="${esc(c.phone)}">📞</a>` : '',
+        ].filter(Boolean).join(' ');
+
         return `<tr class="clickable${isArchived(c) ? ' row-archived' : ''}" data-id="${c.id}">
           <td><b>${esc(c.name)}</b>${c.source ? `<div class="file-sub">${esc(c.source)}</div>` : ''}</td>
-          <td class="nowrap">${esc(c.phone || '—')}</td>
-          <td class="nowrap">${esc(c.whatsapp || '')} ${esc(c.telegram || '')}</td>
-          <td>${esc(c.email || '—')}</td>
+          <td class="nowrap">${contacts || '—'}</td>
           <td class="num">${esc(c.wantBedrooms || '—')}</td>
           <td>${esc(c.wantArea || '—')}</td>
           <td class="num">${c.budget
             ? `${moneyShort(c.budget, 'IDR')}<div class="file-sub">${c.budgetPeriod === 'night' ? 'в сутки' : 'в месяц'}</div>`
             : '—'}</td>
-          <td>${bs.length}</td>
-          <td>${cur ? `${esc(v ? v.name : '')} <span class="file-sub">${fmtRange(cur.dateFrom, cur.dateTo)}</span>` : '—'}</td>
-          <td class="num">${paid ? moneyShort(paid, 'IDR') : '—'}</td>
+          <td>${bs.length
+            ? `${bs.length} ${plural(bs.length, 'бронь', 'брони', 'броней')}
+               ${cur ? `<div class="file-sub">${esc(v ? v.name : '')} · ${fmtRange(cur.dateFrom, cur.dateTo)}</div>` : ''}
+               ${paid ? `<div class="file-sub">оплачено ${moneyShort(paid, 'IDR')}</div>` : ''}`
+            : '<span class="mute">—</span>'}</td>
           <td class="archive-cell">
             <label class="check" title="${isArchived(c) ? 'Вернуть в работу' : 'Убрать из рабочего списка'}">
               <input type="checkbox" data-arch="${c.id}"${isArchived(c) ? ' checked' : ''}>
             </label>
-            ${isArchived(c) && c.archivedAt ? `<div class="file-sub">с ${esc(c.archivedAt)}</div>` : ''}
+            ${isArchived(c) && c.archivedAt ? `<div class="file-sub">${esc(c.archivedAt)}</div>` : ''}
           </td>
         </tr>`;
       }).join('')}</tbody></table></div>`;

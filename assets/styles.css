@@ -493,3 +493,12 @@ code{background:var(--bg);border:1px solid var(--line-soft);border-radius:5px;pa
 .archive-cell input{width:16px;height:16px;cursor:pointer}
 .archived-note{display:flex;align-items:center;gap:8px;padding:12px 16px;margin-bottom:14px;
   border-color:rgba(232,176,75,.35);background:linear-gradient(90deg,rgba(232,176,75,.10),transparent 60%)}
+
+/* ===== Таблица клиентов: помещается в экран без прокрутки вбок ===== */
+.clients-table{min-width:0;table-layout:auto}
+.clients-table th,.clients-table td{padding:9px 10px}
+.clients-table td:first-child{min-width:150px}
+.clients-table .c-link{display:inline-block;margin-right:6px;white-space:nowrap}
+.clients-table .c-link:last-child{margin-right:0}
+.clients-table .archive-head{width:46px;text-align:center;font-size:14px}
+.clients-table .archive-cell{width:46px}
